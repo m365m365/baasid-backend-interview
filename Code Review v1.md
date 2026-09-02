@@ -247,7 +247,10 @@ secret: ${JWT_SECRET}
 
 嚴重程度：🔴 嚴重
 
-狀態：⚠️ 待完整 Review 確認
+狀態：狀態：已修正
+說明：移除 application.yml 中公開 fallback secret，
+改由 JWT_SECRET 環境變數提供。
+
 2. 🟡 中等問題
    CR-008 — API 直接回傳 JPA Entity
 
