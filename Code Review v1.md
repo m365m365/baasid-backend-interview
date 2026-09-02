@@ -218,7 +218,9 @@ BCryptPasswordEncoder
 
 嚴重程度：🔴 嚴重
 
-狀態：⚠️ 待完整 Review 確認
+狀態：✅ 已修正：資料庫密碼改為 BCrypt hash，
+登入改用 PasswordEncoder.matches() 驗證，
+Swagger 實測登入成功並取得 JWT。
 CR-007 — JWT Secret 管理方式需要確認
 
 位置

@@ -4,6 +4,7 @@ import com.trading.platform.dto.LoginRequest;
 import com.trading.platform.entity.User;
 import com.trading.platform.repository.UserRepository;
 import com.trading.platform.security.JwtUtil;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -11,10 +12,16 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
+    private final PasswordEncoder passwordEncoder;
 
-    public AuthService(UserRepository userRepository, JwtUtil jwtUtil) {
+    public AuthService(
+            UserRepository userRepository,
+            JwtUtil jwtUtil,
+            PasswordEncoder passwordEncoder
+    ) {
         this.userRepository = userRepository;
         this.jwtUtil = jwtUtil;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public String login(LoginRequest request) {
@@ -23,8 +30,11 @@ public class AuthService {
                     .findByUsername(request.getUsername())
                     .orElse(null);
 
-            // TODO: 後續改成 BCrypt
-            if (user != null && user.getPassword().equals(request.getPassword())) {
+            if (user != null &&
+                    passwordEncoder.matches(
+                            request.getPassword(),
+                            user.getPassword()
+                    )) {
 
                 if ("ADMIN".equals(user.getRole())) {
                     System.out.println("管理員登入: " + request.getUsername());
