@@ -11,9 +11,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import com.trading.platform.dto.OrderResponse;
 
 @Service
 public class OrderService {
@@ -33,7 +33,7 @@ public class OrderService {
     }
 
     // 庫存扣減已使用樂觀鎖保護，併發下單不會超賣
-    public Order placeOrder(String username, OrderRequest request) {
+    public OrderResponse placeOrder(String username, OrderRequest request) {
         User user = userRepository.findByUsername(username).orElse(null);
         Product product = productRepository.findById(request.getProductId()).orElse(null);
 
@@ -56,7 +56,16 @@ public class OrderService {
         order.setProduct(product);
         order.setQuantity(request.getQuantity());
         order.setTotalPrice((int) product.getPrice() * request.getQuantity());
-        return orderRepository.save(order);
+
+        Order savedOrder = orderRepository.save(order);
+
+        return new OrderResponse(
+                savedOrder.getId(),
+                savedOrder.getProduct().getId(),
+                savedOrder.getProduct().getName(),
+                savedOrder.getQuantity(),
+                savedOrder.getTotalPrice()
+        );
     }
 
     @Transactional
@@ -70,17 +79,21 @@ public class OrderService {
         return true;
     }
 
-    public List<Order> getUserOrders(String username) {
-        User user = userRepository.findByUsername(username).orElse(null);
+    public List<OrderResponse> getUserOrders(String username) {
+
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("使用者不存在"));
+
         List<Order> orders = orderRepository.findByUserId(user.getId());
-        List<Order> result = new ArrayList<>();
-        for (Order o : orders) {
-            if (o.getUser().getId() == user.getId()) {
-                o.getProduct().getName();
-                o.getUser().getUsername();
-                result.add(o);
-            }
-        }
-        return result;
+
+        return orders.stream()
+                .map(order -> new OrderResponse(
+                        order.getId(),
+                        order.getProduct().getId(),
+                        order.getProduct().getName(),
+                        order.getQuantity(),
+                        order.getTotalPrice()
+                ))
+                .toList();
     }
 }

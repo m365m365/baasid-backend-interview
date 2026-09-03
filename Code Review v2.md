@@ -1,444 +1,1144 @@
-### Review 狀態： 初步草稿
+# Code Review v2 草稿
 
+## Review 狀態
 
--  專案類型： Spring Boot Backend REST API
-- 目前主要技術： Java 21、Spring Boot、Spring Security、JWT、Spring Data JPA、Swagger / OpenAPI、Docker、PostgreSQL
+- 專案類型：Spring Boot Backend REST API
+- 目前主要技術：Java 21、Spring Boot、Spring Security、JWT、Spring Data JPA、Swagger / OpenAPI、Docker、PostgreSQL
+- Review 版本：Draft v0.2
 
-- 本報告為目前開發過程的初步 Code Review，包含已實際遇到並修正的問題，以及從目前 API 設計觀察到、後續需要進一步確認的項目。完整版本需再通讀整個專案原始碼後更新。
+本報告為目前開發過程的初步 Code Review。
 
+內容包含：
 
-###
- 1. 🔴 嚴重問題
-   CR-001 — API 回傳使用者密碼
+- 開發過程中實際遇到並修正的問題
+- 已實際測試確認的安全性問題
+- 從目前 API 設計觀察到、後續需要進一步確認的項目
+- 開發環境與 Runtime 問題
+- 目前決定暫時不修改的合理設計取捨
 
-位置
-src/main/java/com/trading/platform/entity/User.java
-Order API Response
+完整版本將在後續通讀整個專案原始碼後，再補上更精確的程式碼位置、實際證據與完整修正結果。
 
- 2. 問題描述
+---
+
+# 一、🔴 嚴重問題
+
+## CR-001 — API 回傳使用者密碼
+
+### 1. 位置
+
+- `src/main/java/com/trading/platform/entity/User.java`
+- Order API Response
+- `GET /api/orders`
+
+### 2. 問題描述
+
 原本呼叫：
+
+```http
 GET /api/orders
+```
+
 Response 會出現：
 
+```json
 "user": {
-"id": 1,
-"username": "admin",
-"password": "admin123",
-"role": "ADMIN"
+  "id": 1,
+  "username": "admin",
+  "password": "admin123",
+  "role": "ADMIN"
 }
-原因是 Order 關聯 User Entity，而 Jackson 在序列化時直接把 password 一起輸出。
+```
 
- 3. 為什麼是問題
-API 不應回傳密碼。即使未來改成 BCrypt hash，也不應將 hash 暴露給 Client。
-可能造成敏感資訊洩漏。
-嚴重程度：🔴 嚴重
+原因是 `Order` 關聯 `User Entity`，而 Jackson 在序列化時直接把 `password` 一起輸出。
 
- 4. 狀態：✅ 已修正
-在 User.java：
+### 3. 為什麼是問題
+
+API 不應回傳使用者密碼。
+
+即使密碼未來改成 BCrypt hash，也不應將 password hash 暴露給 Client。
+
+可能造成：
+
+- 使用者敏感資訊洩漏
+- Password hash 洩漏
+- 增加帳號遭受攻擊的風險
+- Entity 新增敏感欄位時可能再次意外暴露
+
+**嚴重程度：🔴 嚴重**
+
+### 4. 狀態
+
+✅ **已修正**
+
+在 `User.java`：
+
+```java
 @JsonIgnore
 private String password;
-重新測試 /api/orders：
+```
+
+重新測試 `/api/orders`：
+
+```json
 "user": {
-"id": 1,
-"role": "ADMIN",
-"username": "admin"
+  "id": 1,
+  "role": "ADMIN",
+  "username": "admin"
 }
-password 已經消失。
-- 已提交：
+```
+
+`password` 已經消失。
+
+### 5. 已提交
+
+```text
 fix: hide user password from API response
+```
 
+---
 
-###
- 1. 嚴重程度：🔴 嚴重
-CR-002 — Spring Data Rep 
-位置
-ProductRepository.java
-Product.java
+## CR-002 — Spring Data Repository 與 Entity 欄位不一致
 
- 2. 問題描述
+### 1. 位置
+
+- `ProductRepository.java`
+- `Product.java`
+
+### 2. 問題描述
+
 Repository 曾存在依照 Entity 不存在欄位建立的查詢方法，例如：
+
+```java
 findByCategory(...)
-但 Product Entity 沒有相對應的 category property。
+```
 
- 3. 為什麼是問題
+但 `Product Entity` 沒有對應的 `category` property。
+
+### 3. 為什麼是問題
+
 Spring Data JPA 會根據 Repository method name 自動解析 Entity property。
-如果 property 不存在，Spring ApplicationContext 初始化時就可能失敗。
 
-後果
-- 程式可以通過部分編譯
+如果 property 不存在，Spring ApplicationContext 初始化 Repository 時可能直接失敗。
+
+可能流程：
+
+```text
+程式通過編譯
 ↓
-- Spring Boot 初始化 Repository
+Spring Boot 初始化 Repository
 ↓
-- 找不到 Entity property
+Spring Data 解析 method name
 ↓
-- ApplicationContext 啟動失敗
-嚴重程度：🔴 嚴重
+找不到 Product.category
+↓
+Repository 建立失敗
+↓
+ApplicationContext 啟動失敗
+```
 
- 4. 狀態：✅ 已修正
-Repository method 已調整，使其與 Entity 欄位一致。
+**嚴重程度：🔴 嚴重**
 
-###
-1. 嚴重程度：🔴 嚴重
-CR-003 — JWT Authentication Filter Bean 設定問題造成啟動失敗
-位置
-security/JwtAuthenticationFilter.java
-config/SecurityConfig.java
+### 4. 狀態
 
-2. 問題描述
-SecurityConfig 需要：
+✅ **已修正**
+
+無實際使用需求的 `findByCategory(...)` 已移除，使 Repository 與目前 `Product Entity` 定義一致。
+
+### 5. 已提交
+
+已包含於前期 Startup Blocking Issues 修正。
+
+---
+
+## CR-003 — JwtAuthenticationFilter Bean 設定問題造成啟動失敗
+
+### 1. 位置
+
+- `security/JwtAuthenticationFilter.java`
+- `config/SecurityConfig.java`
+
+### 2. 問題描述
+
+`SecurityConfig` 需要：
+
+```java
 JwtAuthenticationFilter
+```
+
 但 Filter 曾沒有正確註冊成 Spring Bean。
+
 因此出現類似：
+
+```text
 required a bean of type
 JwtAuthenticationFilter
 that could not be found
+```
 
-3. 為什麼是問題
+### 3. 為什麼是問題
 
 Spring 無法完成 Dependency Injection，因此無法建立 Security Configuration。
-後果
-整個 Spring Boot Application 無法啟動。
-嚴重程度：🔴 嚴重
 
-4. 狀態：✅ 已修正
-Filter 已正確納入 Spring Bean 管理。
+可能流程：
 
-###
-1. 🔴 嚴重問題
-CR-004 — JWT 方法呼叫與定義不一致造成編譯失敗
+```text
+JwtAuthenticationFilter Bean 不存在
+↓
+SecurityConfig 無法注入
+↓
+SecurityFilterChain 無法建立
+↓
+ApplicationContext 啟動失敗
+↓
+Spring Boot 無法啟動
+```
 
-位置
+**嚴重程度：🔴 嚴重**
 
-service/AuthService.java
-security/JwtUtil.java
+### 4. 狀態
 
-2. 問題描述
-JWT 功能開發期間，generateToken() 的 method signature 與呼叫端曾不同步。
+✅ **已修正**
+
+`JwtAuthenticationFilter` 已正確納入 Spring Bean 管理。
+
+目前 Security Filter 可以正常載入。
+
+### 5. 已提交
+
+已包含於前期 Security / Startup 修正。
+
+---
+
+## CR-004 — JWT 方法呼叫與定義不一致造成編譯失敗
+
+### 1. 位置
+
+- `service/AuthService.java`
+- `security/JwtUtil.java`
+
+### 2. 問題描述
+
+JWT 功能開發期間，`generateToken()` 的 method signature 與呼叫端曾不同步。
+
 例如呼叫：
+
+```java
 generateToken(username, role)
+```
+
 但實際定義可能只有：
+
+```java
 generateToken(username)
+```
 
-3. 為什麼是問題
-Java 在 compile time 找不到符合參數的方法。
-後果
+### 3. 為什麼是問題
+
+Java 在 Compile Time 找不到符合參數的方法。
+
+可能造成：
+
+```text
 Compilation Error
-→ Maven build failure
-→ 專案無法執行
-嚴重程度：🔴 嚴重
+↓
+Maven Build Failure
+↓
+專案無法執行
+```
 
-4. 狀態：✅ 已修正
-AuthService 與 JwtUtil 已統一。
+**嚴重程度：🔴 嚴重**
 
-###
-1. 🔴 嚴重問題
-CR-005 — DTO / Service getter 使用不一致造成編譯問題
-位置
-ProductService.java
-ProductRequest.java
+### 4. 狀態
 
- 2. 問題描述
+✅ **已修正**
 
-Service 與 DTO 的 getter / property 使用曾有不一致，需要依實際 DTO 定義使用正確的方法，例如：
+`AuthService` 與 `JwtUtil` 已統一。
+
+目前 JWT 可以同時包含：
+
+- username
+- role
+- issuedAt
+- expiration
+
+登入後可以正常產生 JWT。
+
+### 5. 已提交
+
+已包含於 JWT Authentication 功能修正。
+
+---
+
+## CR-005 — DTO / Service Getter 使用不一致造成編譯失敗
+
+### 1. 位置
+
+- `ProductService.java`
+- `ProductRequest.java`
+
+### 2. 問題描述
+
+`ProductRequest` 實際為 Java Record。
+
+因此 Record 的 accessor 應使用：
+
+```java
+request.name();
+request.price();
+request.stock();
+```
+
+而不是一般 Java Bean 的：
+
+```java
 request.getName();
 request.getPrice();
 request.getStock();
+```
 
-3. 為什麼是問題
-如果呼叫 DTO 不存在的方法，Java 會直接產生 compilation error。
-嚴重程度：🔴 嚴重
+原本 Service 與 DTO 的 accessor 使用方式不一致。
 
-4. 狀態：✅ 已修正
-目前專案已能正常編譯及執行。
+### 3. 為什麼是問題
 
-###
-1. 🔴 嚴重問題
-CR-006 — 使用者密碼儲存方式需要確認
-位置
-待完整 Review：
-User.java
-AuthService.java
-data.sql
-SecurityConfig.java
+如果呼叫 DTO 中不存在的方法，Java 會直接產生 Compilation Error。
 
- 2. 問題描述
-測試過程中曾看到：
-admin123
-需要確認資料庫中的 password 是否也是明文。
-如果 DB 儲存：
-admin123
-而不是 BCrypt：
-$2a$10$....
-就屬於嚴重安全問題。
+可能造成：
 
-3. 建議
-使用：
+```text
+Compilation Error
+↓
+Maven Build Failure
+↓
+Spring Boot 無法執行
+```
+
+**嚴重程度：🔴 嚴重**
+
+### 4. 狀態
+
+✅ **已修正**
+
+`ProductService` 已依照 `ProductRequest record` 的實際定義使用正確 accessor。
+
+目前專案可以正常編譯與執行。
+
+### 5. 已提交
+
+已包含於 Startup Blocking Issues 修正。
+
+---
+
+## CR-006 — 使用者密碼以明文方式儲存與比對
+
+### 1. 位置
+
+- `User.java`
+- `AuthService.java`
+- `data.sql`
+- `SecurityConfig.java`
+
+### 2. 問題描述
+
+原本測試帳號使用：
+
+```text
+admin / admin123
+alice / alice123
+```
+
+資料庫曾直接儲存明文密碼。
+
+登入邏輯也曾直接進行字串比較，例如：
+
+```java
+user.getPassword().equals(request.getPassword())
+```
+
+### 3. 為什麼是問題
+
+使用者密碼不應以明文方式儲存在 Database。
+
+如果 Database 發生資料洩漏，攻擊者可以直接取得使用者真正的密碼。
+
+即使是測試系統，也應展示基本的 Password Hashing 安全設計。
+
+建議使用：
+
+```java
 PasswordEncoder
 BCryptPasswordEncoder
-嚴重程度：🔴 嚴重
+```
 
-4. 狀態：✅ 已修正：資料庫密碼改為 BCrypt hash，
-登入改用 PasswordEncoder.matches() 驗證，
-Swagger 實測登入成功並取得 JWT。
+登入驗證則使用：
 
-###
-1. 🔴 嚴重問題
-CR-007 — JWT Secret 管理方式需要確認
+```java
+passwordEncoder.matches(...)
+```
 
-位置
-JwtUtil.java
-application.yml
+**嚴重程度：🔴 嚴重**
 
- 2. 問題描述
-需要確認 JWT Secret 是否直接寫死在 Java 或 application.yml。
-例如不應：
+### 4. 狀態
+
+✅ **已修正**
+
+目前：
+
+- Database 中使用者密碼已改成 BCrypt hash
+- `data.sql` 已改為 BCrypt hash
+- `SecurityConfig` 已提供 `PasswordEncoder`
+- `AuthService` 已改用 `PasswordEncoder.matches()`
+- Swagger 已實際測試登入
+- 正確帳號密碼可成功取得 JWT
+
+### 5. 已提交
+
+```text
+fix: secure passwords with BCrypt
+```
+
+---
+
+## CR-007 — JWT Secret 存在公開 Fallback
+
+### 1. 位置
+
+- `security/JwtUtil.java`
+- `src/main/resources/application.yml`
+- IntelliJ Run Configuration
+
+### 2. 問題描述
+
+JWT Secret 雖然曾改成透過環境變數讀取，但原本仍存在公開 fallback，例如：
+
+```yaml
 jwt:
-secret: my-secret-123
-並直接 commit 到 GitHub。
+  secret: ${JWT_SECRET:change-me-in-prod-please-rotate-this-secret}
+```
 
-3. 建議：
+這代表如果沒有設定 `JWT_SECRET`，系統仍會使用 Repository 中公開可見的 Secret。
+
+### 3. 為什麼是問題
+
+JWT Secret 是 JWT Signature 的核心敏感資訊。
+
+不應直接存在：
+
+- Java Source Code
+- `application.yml` 明文
+- Git Repository
+- 公開 fallback value
+
+如果 JWT Secret 洩漏，可能破壞 JWT Token 的可信任基礎。
+
+**嚴重程度：🔴 嚴重**
+
+### 4. 狀態
+
+✅ **已修正**
+
+目前改為：
+
+```yaml
 jwt:
-secret: ${JWT_SECRET}
-再透過環境變數設定。
-嚴重程度：🔴 嚴重
+  secret: ${JWT_SECRET}
+  expiration-ms: ${JWT_EXPIRATION_MS:3600000}
+```
 
-4. 狀態：狀態：已修正
-說明：移除 application.yml 中公開 fallback secret，
-改由 JWT_SECRET 環境變數提供。
+真正的 JWT Secret 改由 IntelliJ Run Configuration 的 Environment Variables 提供。
 
-###
-1. 🔴 嚴重問題
-   CR-008 — Database Password 寫死在 application.yml
-位置
-src/main/resources/application.yml
-IntelliJ Run Configuration
+已重新啟動 Spring Boot 並測試 Swagger Login，JWT 可正常產生。
 
-2. 問題描述
-原本 application.yml 中直接寫入 PostgreSQL 帳號密碼，例如：
-spring:
-datasource:
-username: trading
-password: trading123
-由於 application.yml 會跟著原始碼一起進入 Git repository，
-如果直接將真實資料庫密碼寫在設定檔中，敏感資訊就可能被提交到版本控制。
+### 5. 已提交
 
-3. 為什麼是問題
-資料庫密碼屬於敏感憑證，不應直接存在 Git 可追蹤的設定檔內。
-可能後果：
-- 密碼被其他開發者或外部人員看到
-- Repository 若外洩，資料庫憑證也會一起外洩
-- 未來 Production 若沿用相同模式，風險更高
-嚴重程度：🔴 嚴重
-
-4. 修正方式
-將：
-password: trading123
-改成：
-password: ${DB_PASSWORD}
-實際密碼改由環境變數提供。
-IntelliJ Run Configuration 已設定：
-DB_PASSWORD=實際資料庫密碼
-
-5. 狀態：✅ 已修正
-Spring Boot 已重新啟動驗證，
-PostgreSQL 連線成功，
-Swagger 登入與 JWT 流程也可正常使用。
-已提交：
+```text
 fix: externalize JWT and database secrets
+```
 
-###
-1.🟡 中等問題
-   CR-009 — API 直接回傳 JPA Entity
+---
 
-2. 問題描述
+## CR-008 — Database Password 寫死在 application.yml
 
-目前 /api/orders Response 結構類似：
+### 1. 位置
+
+- `src/main/resources/application.yml`
+- IntelliJ Run Configuration
+
+### 2. 問題描述
+
+原本 `application.yml` 中直接寫入 PostgreSQL 連線密碼，例如：
+
+```yaml
+spring:
+  datasource:
+    username: trading
+    password: trading123
+```
+
+由於 `application.yml` 會跟著原始碼進入 Git Repository，真實 Database Credential 可能因此被提交到版本控制。
+
+### 3. 為什麼是問題
+
+Database Password 屬於敏感憑證。
+
+不應直接存在 Git 可追蹤的設定檔中。
+
+可能後果：
+
+- Repository 外洩時 Database Credential 一起外洩
+- 其他取得 Repository 的人員可以看到密碼
+- Production 若沿用相同方式，安全風險更高
+
+**嚴重程度：🔴 嚴重**
+
+### 4. 狀態
+
+✅ **已修正**
+
+原本：
+
+```yaml
+password: trading123
+```
+
+改為：
+
+```yaml
+password: ${DB_PASSWORD}
+```
+
+實際 Database Password 改由 Environment Variable 提供。
+
+IntelliJ Run Configuration 已設定 `DB_PASSWORD`。
+
+完成後重新驗證：
+
+```text
+Spring Boot
+↓
+PostgreSQL Connection
+↓
+ApplicationContext
+↓
+Tomcat 8080
+↓
+Swagger
+↓
+Login
+↓
+JWT
+```
+
+均可正常運作。
+
+### 5. 已提交
+
+```text
+fix: externalize JWT and database secrets
+```
+
+---
+
+# 二、🟡 中等問題
+
+## CR-009 — API 直接回傳 JPA Entity
+
+### 1. 位置
+
+- `Order.java`
+- `OrderController.java`
+- `OrderService.java`
+- `OrderResponse.java`
+
+### 2. 問題描述
+
+原本 `OrderController` 的訂單 API 直接將 JPA Entity 當作 API Response 回傳。
+
+例如：
+
+```java
+@PostMapping
+public Order placeOrder(...)
+```
+
+以及：
+
+```java
+@GetMapping
+public List<Order> myOrders(...)
+```
+
+因此原本 `/api/orders` Response 結構可能直接包含：
+
+```text
 Order
 ├── User
 └── Product
-API 很可能直接序列化 Order Entity。
-這也是前面 password 曾被意外輸出的主要設計原因之一。
-Entity 未來增加欄位時，API 可能不小心跟著暴露。
+```
 
-3. 建議
-未來建立：
-OrderResponse
-UserResponse
-ProductResponse
-形成：
+Spring / Jackson 會根據 `Order Entity` 以及關聯的 `User`、`Product` 直接產生 JSON Response。
+
+這也是 CR-001 中 `password` 曾被意外輸出的主要設計原因之一。
+
+Entity 未來如果新增欄位，API Response 也可能跟著改變，甚至暴露原本不應提供給 Client 的資料。
+
+### 3. 為什麼是問題
+
+JPA Entity 的主要用途是描述 Persistence Model。
+
+API Response 則屬於對外提供的 API Contract。
+
+兩者直接綁定可能造成：
+
+- Entity 欄位意外暴露
+- API Response 與 Database Model 高度耦合
+- Entity 修改時 API Contract 被動改變
+- 關聯 Entity 可能被一起序列化
+- 後續 API 版本維護較困難
+
+因此建立 `OrderResponse DTO`，只選擇允許 Client 取得的欄位。
+
+修改後形成：
+
+```text
 Database
 ↓
 Entity
 ↓
 Service
 ↓
-Response DTO
+OrderResponse DTO
 ↓
 Controller
 ↓
 JSON
-嚴重程度：🟡 中等
+```
 
-4. 狀態：⚠️ 建議後續重構
+目前 `OrderResponse` 對外提供：
 
-###
-1.🟡 中等問題
-CR-0010 — Order quantity 輸入驗證需要加強
+```text
+OrderResponse
+├── id
+├── productId
+├── productName
+├── quantity
+└── totalPrice
+```
 
-2. 問題描述
-目前 Request：
+**嚴重程度：🟡 中等**
 
+### 4. 狀態
+
+✅ **已修正**
+
+已建立：
+
+```text
+dto/OrderResponse.java
+```
+
+並將 `GET /api/orders`：
+
+```java
+List<Order>
+```
+
+修改為：
+
+```java
+List<OrderResponse>
+```
+
+同時將 `POST /api/orders`：
+
+```java
+Order
+```
+
+修改為：
+
+```java
+OrderResponse
+```
+
+`OrderService` 會將內部的 `Order Entity` 轉換成 `OrderResponse DTO` 後，再交由 Controller 回傳。
+
+Swagger 已實際測試：
+
+```text
+GET /api/orders
+→ HTTP 200
+→ 成功回傳 OrderResponse
+```
+
+以及：
+
+```text
+POST /api/orders
+→ HTTP 200
+→ 成功建立訂單並回傳 OrderResponse
+```
+
+實際 Response：
+
+```json
 {
-"productId": 1,
-"quantity": 2
+  "id": 2,
+  "productId": 1,
+  "productName": "機械鍵盤",
+  "quantity": 1,
+  "totalPrice": 2999
 }
+```
 
-需要確認是否可以輸入：
+Response 已不再直接包含：
 
+```text
+User Entity
+Product Entity
+password
+role
+stock
+```
+
+因此 API 已不再直接將完整 `Order Entity` 作為 Response 回傳。
+
+### 5. 已提交
+
+待 Git commit / push。
+
+建議 Commit Message：
+
+```text
+refactor: use OrderResponse DTO for order APIs
+```
+
+---
+## CR-010 — Order Quantity 輸入驗證需要加強
+
+### 1. 位置
+
+待完整 Review：
+
+- `OrderRequest.java`
+- `OrderController.java`
+- `OrderService.java`
+
+### 2. 問題描述
+
+正常 Request：
+
+```json
 {
-"productId": 1,
-"quantity": -100
+  "productId": 1,
+  "quantity": 2
 }
-3. 建議
+```
+
+需要確認目前 API 是否可能接受：
+
+```json
+{
+  "productId": 1,
+  "quantity": -100
+}
+```
+
+或：
+
+```json
+{
+  "productId": null,
+  "quantity": 0
+}
+```
+
+### 3. 為什麼是問題
+
+如果沒有輸入驗證，可能產生：
+
+- quantity = 0
+- quantity < 0
+- productId = null
+- 非法訂單資料
+- 庫存計算異常
+
+建議使用 Bean Validation，例如：
+
+```java
 @NotNull
 private Long productId;
 
 @NotNull
 @Min(1)
 private Integer quantity;
+```
 
-Controller 使用：
+Controller：
+
+```java
 @Valid @RequestBody OrderRequest request
-嚴重程度：🟡 中等
+```
 
-4. 狀態：⚠️ 待確認
+**嚴重程度：🟡 中等**
 
-###
-1.🟡 中等問題
-CR-011 — 訂單建立與庫存扣減 Transaction 需要確認
+### 4. 狀態
 
-2. 問題描述
-目前建立訂單：
+⚠️ **待確認**
+
+### 5. 後續處理
+
+完整 Review `OrderRequest`、`OrderController`、`OrderService` 後再決定修正方式。
+
+---
+
+## CR-011 — 訂單建立與庫存扣減 Transaction 需要確認
+
+### 1. 位置
+
+待完整 Review：
+
+- `OrderService.java`
+- `OrderRepository.java`
+- `ProductRepository.java`
+
+### 2. 問題描述
+
+目前：
+
+```http
 POST /api/orders
-已成功測試。
-例如：
-{
-"productId": 1,
-"quantity": 2
-}
+```
 
-3. 但需要進一步確認：
+已經可以成功建立訂單。
+
+例如：
+
+```json
+{
+  "productId": 1,
+  "quantity": 2
+}
+```
+
+但仍需要確認：
+
+```text
 檢查庫存
 ↓
-建立 Order
+扣除 Product Stock
 ↓
-扣除 Product stock
+建立 Order
+```
 
-是否在同一 Transaction。
+是否確實在同一個 Transaction Boundary 中完成。
 
-建議 Service 使用：
+### 3. 為什麼是問題
 
+如果訂單建立與庫存更新不在正確 Transaction 中，可能發生：
+
+```text
+Order 建立成功
+↓
+Stock 更新失敗
+↓
+Database 資料不一致
+```
+
+另外，多個 Request 同時購買相同商品時，也需要確認是否存在庫存 Race Condition。
+
+建議進一步檢查：
+
+```java
 @Transactional
+```
 
-否則可能發生訂單建立成功，但庫存更新失敗的資料不一致。
+以及庫存更新的 Concurrent Access 設計。
 
-嚴重程度：🟡 中等
+**嚴重程度：🟡 中等**
 
-4. 狀態：⚠️ 待確認
+### 4. 狀態
 
-###
-1.🟡 中等問題
-CR-012 — 金額資料型別需要確認
+⚠️ **待確認**
 
-2. 問題描述
-目前 API 有：
+### 5. 後續處理
+
+下一階段優先 Review `OrderService` 的 Transaction 與庫存扣減流程。
+
+---
+
+## CR-012 — 金額資料型別需要確認
+
+### 1. 位置
+
+待完整 Review：
+
+- `Product.java`
+- `Order.java`
+- `ProductRequest.java`
+- Order 金額計算邏輯
+
+### 2. 問題描述
+
+目前 API 曾出現：
+
+```json
 "price": 2999.99,
 "totalPrice": 5998
-如果 Java 使用：
+```
+
+需要確認 Java 是否使用：
+
+```java
 double
+```
+
+或：
+
+```java
 Double
-處理金額，可能產生浮點精度問題。
+```
 
-3. 建議
+處理金額。
 
-使用：
+### 3. 為什麼是問題
+
+Floating Point 不適合直接處理需要精確計算的金額。
+
+例如某些小數無法使用 binary floating-point 精確表示。
+
+較安全的方式通常是：
+
+```java
 BigDecimal
+```
+
 例如：
+
+```java
 private BigDecimal price;
 private BigDecimal totalPrice;
-嚴重程度：🟡 中等
+```
 
-4. 狀態：⚠️ 待確認
+**嚴重程度：🟡 中等**
 
-###
-1.🟡 中等問題
-CR-013 — Port 8080 衝突造成啟動失敗
+### 4. 狀態
 
-2. 問題描述
-類型：執行環境問題
-曾遇到：
+⚠️ **待確認**
+
+### 5. 後續處理
+
+完整 Review Entity 與 Order 金額計算邏輯後確認。
+
+---
+
+## CR-013 — Port 8080 衝突造成啟動失敗
+
+### 1. 位置
+
+類型：
+
+```text
+Environment / Runtime Issue
+```
+
+### 2. 問題描述
+
+開發過程曾遇到：
+
+```text
 Port 8080 was already in use
-原因
-其他 Java / Spring Boot process 已經使用 8080。
+```
 
-3. 處理
+原因是其他 Java / Spring Boot Process 已占用 Port 8080。
 
-Windows 可檢查：
+### 3. 為什麼是問題
+
+即使程式碼完全正確，只要 Port 已被其他 Process 使用，Tomcat 就無法 Bind Port，造成 Spring Boot 啟動失敗。
+
+Windows 可使用：
+
+```powershell
 netstat -ano | findstr :8080
-再停止舊 process 或調整 Spring Boot port。
-嚴重程度：🟡 中等
+```
 
-4. 狀態：✅ 已處理
-此問題不是程式碼設計錯誤，因此正式 Code Review 應分類為 Environment / Runtime Issue。
+確認占用 Port 的 PID。
 
-###
-1.🟡 中等問題
-CR-014 — Java / JAVA_HOME 環境設定造成 Maven 無法執行
+**嚴重程度：🟡 中等**
 
-2. 問題描述
-曾遇到 Java/JDK 環境設定問題，使 Terminal 無法正常執行 Maven Wrapper。
-後果
-即使程式碼正確，也無法：
-.\mvnw.cmd spring-boot:run
+但這不是核心 Java 程式碼缺陷。
 
-3. 處理
-確認：
+### 4. 狀態
+
+✅ **已處理**
+
+目前 Spring Boot 已可正常使用 Port 8080 啟動。
+
+### 5. 後續處理
+
+正式 Code Review 中保留，但分類為：
+
+```text
+Environment / Runtime Issue
+```
+
+---
+
+## CR-014 — Java / JAVA_HOME 環境設定造成 Maven 無法正常執行
+
+### 1. 位置
+
+類型：
+
+```text
+Development Environment Issue
+```
+
+使用環境：
+
+- Windows 11
+- IntelliJ IDEA
+- Maven Wrapper
+- Java 21
+
+### 2. 問題描述
+
+曾遇到 Java / JDK 環境設定不一致。
+
+例如：
+
+```powershell
+java -version
+```
+
+與：
+
+```powershell
+.\mvnw.cmd -version
+```
+
+可能使用不同 JDK。
+
+### 3. 為什麼是問題
+
+即使程式碼正確，錯誤的 Java Runtime 仍可能造成：
+
+```text
+Java Version 不一致
+↓
+Maven 使用錯誤 JDK
+↓
+Compile / Runtime 問題
+↓
+專案無法正常執行
+```
+
+需要確認：
+
+```powershell
 java -version
 echo $env:JAVA_HOME
 .\mvnw.cmd -version
-目前使用 Java 21。
-嚴重程度：🟡 中等
+```
 
-4. 狀態：✅ 已處理
+本專案要求 Java 21。
 
-###
-1.🟡 中等問題
-CR-015 — Docker / Database 執行環境問題
+**嚴重程度：🟡 中等**
 
-2. 問題描述
-曾遇到 Docker Desktop / container 尚未正常啟動，造成 DB 服務不可用。
-後果
-Spring Boot
+但屬於 Development Environment 問題。
+
+### 4. 狀態
+
+✅ **已處理**
+
+目前已統一使用 Java 21。
+
+### 5. 後續處理
+
+不需要修改 Business Logic。
+
+---
+
+## CR-015 — Docker / PostgreSQL 執行環境問題
+
+### 1. 位置
+
+類型：
+
+```text
+Development Environment Issue
+```
+
+相關：
+
+- Docker Desktop
+- `docker-compose.yml`
+- PostgreSQL
+
+### 2. 問題描述
+
+曾遇到 Docker Desktop / PostgreSQL Container 尚未正常啟動，導致 Spring Boot 無法連接 Database。
+
+### 3. 為什麼是問題
+
+可能流程：
+
+```text
+Docker / PostgreSQL 未啟動
 ↓
-DataSource
+Spring Boot 啟動
 ↓
-Database connection failed
+DataSource 建立連線
+↓
+Database Connection Failed
+↓
+ApplicationContext 啟動失敗
+```
 
-3. 處理
-確認 Docker Desktop 已啟動，再檢查：
+可使用：
+
+```powershell
 docker compose up -d
 docker compose ps
-嚴重程度：🟡 中等
+```
 
-4. 狀態：✅ 已處理
-這同樣屬於開發環境問題，而非核心 Java 程式碼缺陷。
+確認 PostgreSQL Container 狀態。
 
-###
-1.🟢 輕微／程式品質改善
-   CR-016 — Swagger API 文件可以再完整
+**嚴重程度：🟡 中等**
 
-2. 問題描述
+但屬於開發環境問題，而不是核心 Java 程式碼缺陷。
+
+### 4. 狀態
+
+✅ **已處理**
+
+Docker Desktop 與 PostgreSQL Container 已可正常運作。
+
+Spring Boot 目前可成功連線 PostgreSQL。
+
+### 5. 後續處理
+
+正式報告分類為：
+
+```text
+Development Environment Issue
+```
+
+---
+
+# 三、🟢 輕微／程式品質改善
+
+## CR-016 — Swagger API 文件可以再完善
+
+### 1. 位置
+
+- Swagger / OpenAPI Configuration
+- Controller API Documentation
+
+### 2. 問題描述
+
 目前已完成：
+
+```text
 Login
 ↓
 取得 JWT
@@ -447,67 +1147,170 @@ Swagger Authorize
 ↓
 Bearer Token
 ↓
-受保護 API
-這部分已正常運作。
+呼叫受保護 API
+```
 
-3. 未來可加入：
+Swagger JWT Authentication 流程已可以正常運作。
+
+但 API Documentation 仍可以再補充完整。
+
+### 3. 為什麼是問題
+
+目前主要影響的是：
+
+- API 可讀性
+- 開發者使用體驗
+- API Error Response 說明
+- 面試官理解 API 的速度
+
+未來可加入：
+
+```java
 @Operation
 @ApiResponse
-例如描述：
+```
+
+例如說明：
+
+```text
 200 成功
 400 Request 錯誤
 401 未登入
 403 無權限
-404 商品不存在
-嚴重程度：🟢 輕微
+404 Resource 不存在
+```
 
-4. 合理取捨：目前不建議修改
-   @JsonIgnore 暫時保留
+**嚴重程度：🟢 輕微**
 
-目前：
+### 4. 狀態
+
+⚠️ **後續改善**
+
+目前 Swagger 已經足以進行 API 測試，因此不是目前最高優先項目。
+
+### 5. 後續處理
+
+等主要 Security、Validation、Transaction、Money Calculation 問題處理完成後，再完善 Swagger Documentation。
+
+---
+
+# 四、合理取捨與目前不建議修改項目
+
+## Trade-off 001 — `@JsonIgnore` 暫時保留
+
+### 1. 位置
+
+`User.java`
+
+### 2. 目前設計
+
+目前使用：
+
+```java
 @JsonIgnore
 private String password;
-長期來說，使用：
-Entity → DTO → Response
-會比單純 @JsonIgnore 更完整。
-但是現在 @JsonIgnore：
-修改範圍小
-已實際解決 password 洩漏
-不影響目前 JWT Login
-適合作為目前階段的安全修補
+```
 
-因此：
-目前保留 @JsonIgnore，之後進行 DTO 重構時再改善。
-OrderRequest 只有 productId + quantity 是合理設計
+避免 API Response 輸出 password。
 
-目前：
+### 3. 為什麼目前不修改
+
+長期而言：
+
+```text
+Entity
+↓
+Response DTO
+↓
+JSON
+```
+
+會比單純依賴 `@JsonIgnore` 更完整。
+
+但是目前 `@JsonIgnore`：
+
+- 修改範圍小
+- 已實際解決 Password 洩漏
+- 不影響目前 JWT Login
+- 不需要大規模修改 Controller / Service
+- 適合作為目前階段的安全修補
+
+### 4. 決定
+
+✅ **目前保留**
+
+等後續進行 Response DTO 重構時再改善。
+
+---
+
+## Trade-off 002 — OrderRequest 僅包含 productId + quantity
+
+### 1. 位置
+
+`OrderRequest.java`
+
+### 2. 目前設計
+
+目前 Request：
+
+```json
 {
-"productId": 1,
-"quantity": 2
+  "productId": 1,
+  "quantity": 2
 }
-看起來資料很少，但這反而是合理的。
-Client 不應該自行決定：
+```
+
+### 3. 為什麼這是合理設計
+
+雖然欄位很少，但 Client 不應自行決定：
+
+```text
 username
 role
 product price
 totalPrice
+```
 
-理想流程：
-JWT → 判斷目前 User
-productId → DB 查 Product
+較合理流程：
+
+```text
+JWT
 ↓
-取得 price
+判斷目前登入 User
+
+productId
+↓
+Database 查詢 Product
+↓
+取得 DB 中真正 price
+
 quantity × DB price
 ↓
-後端計算 totalPrice
-因此目前這種 Request DTO 設計不建議因為欄位少而修改。
+Backend 計算 totalPrice
+```
 
+因此 Request 只傳：
 
-###
-  目前整體 Review 結論
+```text
+productId
+quantity
+```
+
+反而可以降低 Client 任意修改敏感 Business Data 的機會。
+
+### 4. 決定
+
+✅ **目前不因為欄位少而修改**
+
+真正需要改善的是 CR-010 的 Input Validation，而不是增加不必要欄位。
+
+---
+
+# 五、目前整體 Review 結論
 
 目前專案已經從：
 
+```text
 ❌ Compilation Error
 ↓
 ❌ Spring Boot 啟動失敗
@@ -532,23 +1335,139 @@ quantity × DB price
 ↓
 ✅ @JsonIgnore 修正
 ↓
-✅ Git commit + push
-
-因此目前已經從「無法正常 build / run」推進到「核心 API 可以實際測試，開始進入安全性與程式品質 Review」階段。
-
-下一階段優先順序
-優先	項目	狀態
-🔴 P1	API password 洩漏	        ✅ 已修正
-🔴 P1	編譯／Spring Boot 啟動問題	✅ 已修正
-🔴 P1	使用者密碼改為 BC             ✅ 已修正
-🔴 P1	JWT Secret 移出 application.yml    ✅ 已修正
-🔴 P1   Database Password 改用環境變數      ✅ 已修正
-🟡 P2	Order Response DTO	⚠️ 待改善
-🟡 P2	quantity Validation	⚠️ 待查
-🟡 P2	庫存 Transaction	⚠️ 待查
-🟡 P2	金額 BigDecimal	⚠️ 待查
-🟢 P3	Swagger 文件完善	後續
-
-Draft v0.1 結論：目前最嚴重的已知 API 密碼暴露問題已修正；下一步不急著增加新功能，優先檢查「密碼加密、JWT Secret、Order DTO、Validation、Transaction」會比較合理。
+❌ 使用者密碼明文儲存
+↓
+✅ BCrypt 修正
+↓
+❌ JWT Secret 存在公開 fallback
+↓
+✅ JWT_SECRET 環境變數化
+↓
+❌ Database Password 寫死於 application.yml
+↓
+✅ DB_PASSWORD 環境變數化
+↓
+✅ IntelliJ Run Configuration 設定完成
+↓
+✅ Spring Boot 重新啟動成功
+↓
+✅ PostgreSQL 正常連線
+↓
+✅ Swagger Login / JWT 再驗證成功
+↓
+✅ Git Commit + Push
 ```
-### 這份先當作簡單 Code Review 草稿即可；等之後把整個專案原始碼交給我通讀，再把「⚠️ 待確認」全部變成有實際檔名、程式碼位置與證據的正式報告。
+
+目前專案已經從：
+
+```text
+無法正常 Build / Run
+```
+
+推進到：
+
+```text
+核心 API 可以實際執行
+↓
+Authentication / Authorization 可以運作
+↓
+主要 Credential Security 問題已處理
+↓
+進入 Business Logic / Data Consistency Review
+```
+
+---
+
+# 六、已完成 P1 問題
+
+| 優先級 | Code Review | 項目 | 狀態 |
+|---|---|---|---|
+| 🔴 P1 | CR-001 | API Password 洩漏 | ✅ 已修正 |
+| 🔴 P1 | CR-002 | Repository / Entity 不一致 | ✅ 已修正 |
+| 🔴 P1 | CR-003 | JWT Filter Bean 問題 | ✅ 已修正 |
+| 🔴 P1 | CR-004 | JWT Method Signature 問題 | ✅ 已修正 |
+| 🔴 P1 | CR-005 | DTO / Service Accessor 問題 | ✅ 已修正 |
+| 🔴 P1 | CR-006 | 使用者密碼明文儲存 | ✅ BCrypt 修正 |
+| 🔴 P1 | CR-007 | JWT Secret 管理 | ✅ 環境變數化 |
+| 🔴 P1 | CR-008 | Database Password 管理 | ✅ 環境變數化 |
+
+---
+
+# 七、下一階段優先順序
+
+| 優先級 | Code Review | 項目 | 狀態 |
+|---|---|---|---|
+| 🟡 P2 | CR-009 | Order Response DTO | ⚠️ 待改善 |
+| 🟡 P2 | CR-010 | Quantity Validation | ⚠️ 待確認 |
+| 🟡 P2 | CR-011 | Transaction / 庫存一致性 | ⚠️ 待確認 |
+| 🟡 P2 | CR-012 | Money / BigDecimal | ⚠️ 待確認 |
+| 🟢 P3 | CR-016 | Swagger 文件完善 | ⚠️ 後續 |
+
+---
+
+# 八、Draft v0.2 結論
+
+目前第一階段主要處理的是：
+
+```text
+Build
+↓
+Startup
+↓
+Security
+↓
+Authentication
+↓
+Credential Protection
+```
+
+目前已修正的主要問題包括：
+
+1. API 暴露 Password
+2. Repository / Entity 不一致造成啟動失敗
+3. JwtAuthenticationFilter Bean 問題
+4. JWT Method Signature 編譯問題
+5. DTO / Service Accessor 編譯問題
+6. 使用者密碼明文儲存
+7. JWT Secret 公開 Fallback
+8. Database Password 硬編碼
+
+目前下一階段不急著增加新功能。
+
+建議優先順序：
+
+```text
+CR-009
+Order Response DTO
+↓
+CR-010
+Input Validation
+↓
+CR-011
+Transaction / Stock Consistency
+↓
+CR-012
+Money / BigDecimal
+↓
+CR-016
+Swagger Documentation
+```
+
+其中 `Validation`、`Transaction`、`Money Calculation` 與訂單 Business Logic 正確性直接相關，應優先於單純的文件與程式碼美化。
+
+---
+
+> **目前文件狀態：Code Review Draft v0.2**
+>
+> 本文件仍屬初步 Code Review。
+>
+> 後續將繼續通讀完整專案原始碼，把所有「⚠️ 待確認」項目逐一改成：
+>
+> 1. 明確檔案位置
+> 2. 實際問題程式碼
+> 3. 問題發生原因
+> 4. 實際修正方式
+> 5. Swagger / Runtime 測試結果
+> 6. Git Commit 紀錄
+>
+> 完成後再整理為正式 Code Review 版本。
