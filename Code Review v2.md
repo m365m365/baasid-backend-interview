@@ -702,39 +702,30 @@ stock
 
 因此 API 已不再直接將完整 `Order Entity` 作為 Response 回傳。
 
+
+
 ### 5. 已提交
 
-待 Git commit / push。
 
-建議 Commit Message：
 
 ```text
 refactor: use OrderResponse DTO for order APIs
 ```
 
 ---
-## CR-010 — Order Quantity 輸入驗證需要加強
+## CR-010 — Order Quantity 輸入驗證不足
 
 ### 1. 位置
 
-待完整 Review：
-
 - `OrderRequest.java`
 - `OrderController.java`
-- `OrderService.java`
+- `SecurityConfig.java`
 
 ### 2. 問題描述
 
-正常 Request：
+原本 `POST /api/orders` 沒有對訂單數量 `quantity` 做有效輸入驗證。
 
-```json
-{
-  "productId": 1,
-  "quantity": 2
-}
-```
-
-需要確認目前 API 是否可能接受：
+實際透過 Swagger 測試：
 
 ```json
 {
@@ -743,51 +734,148 @@ refactor: use OrderResponse DTO for order APIs
 }
 ```
 
-或：
+系統原本仍回傳 HTTP 200，並成功建立訂單，例如：
 
 ```json
 {
-  "productId": null,
-  "quantity": 0
+  "id": 3,
+  "productId": 1,
+  "productName": "機械鍵盤",
+  "quantity": -100,
+  "totalPrice": -299900
 }
 ```
 
-### 3. 為什麼是問題
+代表 API 可以接受負數數量。
 
-如果沒有輸入驗證，可能產生：
-
-- quantity = 0
-- quantity < 0
-- productId = null
-- 非法訂單資料
-- 庫存計算異常
-
-建議使用 Bean Validation，例如：
+另外，原本庫存扣減邏輯為：
 
 ```java
-@NotNull
+product.setStock(product.getStock() - quantity);
+```
+
+當：
+
+```text
+quantity = -100
+```
+
+實際運算會變成：
+
+```text
+stock - (-100)
+= stock + 100
+```
+
+因此不只會產生負數訂單金額，甚至可能讓商品庫存反而增加。
+
+### 3. 為什麼是問題
+
+Order Quantity 應只能接受大於 0 的整數。
+
+如果沒有輸入驗證，可能造成：
+
+- `quantity = 0`
+- `quantity < 0`
+- `productId = null`
+- 建立非法訂單
+- 產生負數訂單金額
+- 庫存數量異常增加
+- Business Data 不一致
+
+因此在 `OrderRequest` 加入 Bean Validation：
+
+```java
+@NotNull(message = "商品 ID 不可為空")
+@Positive(message = "商品 ID 必須大於 0")
 private Long productId;
 
-@NotNull
-@Min(1)
+@NotNull(message = "數量不可為空")
+@Positive(message = "數量必須大於 0")
 private Integer quantity;
 ```
 
-Controller：
+並在 `OrderController` 加入：
 
 ```java
-@Valid @RequestBody OrderRequest request
+@Valid
 ```
+
+例如：
+
+```java
+@PostMapping
+public OrderResponse placeOrder(
+        @Valid @RequestBody OrderRequest request,
+        Authentication authentication) {
+```
+
+讓 Spring 在 Request 進入 Service 之前先執行輸入驗證。
 
 **嚴重程度：🟡 中等**
 
 ### 4. 狀態
 
-⚠️ **待確認**
+✅ **已修正**
 
-### 5. 後續處理
+修改後重新透過 Swagger 測試：
 
-完整 Review `OrderRequest`、`OrderController`、`OrderService` 後再決定修正方式。
+```json
+{
+  "productId": 1,
+  "quantity": -98
+}
+```
+
+目前系統已回傳：
+
+```text
+HTTP 400 Bad Request
+```
+
+表示負數 `quantity` 已在 Controller Validation 階段被攔截，不會再進入 `OrderService` 建立錯誤訂單。
+
+另外，Validation Error 原本在 Error Dispatch 階段會再次被 Spring Security 攔截，造成：
+
+```text
+403 Forbidden
+```
+
+已在 `SecurityConfig` 加入：
+
+```java
+.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+```
+
+並使用：
+
+```java
+import jakarta.servlet.DispatcherType;
+```
+
+讓 Spring Validation Error 可以正確回傳：
+
+```text
+400 Bad Request
+```
+
+Console 也已確認出現：
+
+```text
+MethodArgumentNotValidException
+rejected value [-98]
+數量必須大於 0
+```
+
+因此負數 quantity 已無法建立訂單。
+
+### 5. 已提交
+
+
+
+```text
+fix: validate order request quantity
+```
 
 ---
 
