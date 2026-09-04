@@ -3,6 +3,7 @@ package com.trading.platform.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -24,7 +25,8 @@ public class Order {
 
     private Integer quantity;
 
-    private double totalPrice;
+    @Column(name = "total_price", precision = 19, scale = 2, nullable = false)
+    private BigDecimal totalPrice;
 
     private LocalDateTime createdAt = LocalDateTime.now();
 }

@@ -1,9 +1,9 @@
 CREATE TABLE IF NOT EXISTS products (
     id          BIGSERIAL PRIMARY KEY,
     name        VARCHAR(255),
-    price       DOUBLE PRECISION,
+    price       NUMERIC(19, 2),
     stock       INT,
-    version    BIGINT NOT NULL DEFAULT 0,
+    version     BIGINT NOT NULL DEFAULT 0,
     created_at  TIMESTAMP DEFAULT now()
 );
 
@@ -19,6 +19,6 @@ CREATE TABLE IF NOT EXISTS orders (
     user_id     BIGINT,
     product_id  BIGINT,
     quantity    INT,
-    total_price DOUBLE PRECISION,
+    total_price NUMERIC(19, 2),
     created_at  TIMESTAMP DEFAULT now()
 );

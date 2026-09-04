@@ -10,6 +10,7 @@ import com.trading.platform.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import com.trading.platform.dto.OrderResponse;
 
@@ -60,7 +61,8 @@ public class OrderService {
         order.setProduct(product);
         order.setQuantity(request.getQuantity());
         order.setTotalPrice(
-                product.getPrice() * request.getQuantity()
+                product.getPrice()
+                        .multiply(BigDecimal.valueOf(request.getQuantity()))
         );
 
         Order savedOrder = orderRepository.save(order);

@@ -3,6 +3,7 @@ package com.trading.platform.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -16,7 +17,8 @@ public class Product {
 
     private String name;
 
-    private double price;
+    @Column(precision = 19, scale = 2, nullable = false)
+    private BigDecimal price;
 
     private Integer stock;
 

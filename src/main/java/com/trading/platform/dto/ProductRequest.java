@@ -1,4 +1,6 @@
 package com.trading.platform.dto;
 
-public record ProductRequest(String name, double price, Integer stock) {
+import java.math.BigDecimal;
+
+public record ProductRequest(String name, BigDecimal price, Integer stock) {
 }

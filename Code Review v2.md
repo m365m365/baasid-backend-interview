@@ -1130,66 +1130,176 @@ fix: ensure atomic order creation and stock deduction
 
 ### 1. 位置
 
-待完整 Review：
+已完成 Review：
 
-- `Product.java`
-- `Order.java`
-- `ProductRequest.java`
-- Order 金額計算邏輯
+* `Product.java`
+* `Order.java`
+* `ProductRequest.java`
+* `OrderResponse.java`
+* `OrderService.java`
+* `schema.sql`
 
 ### 2. 問題描述
 
-目前 API 曾出現：
-
-```json
-"price": 2999.99,
-"totalPrice": 5998
-```
-
-需要確認 Java 是否使用：
+原本金額欄位使用浮點數型別：
 
 ```java
-double
+private double price;
+private double totalPrice;
 ```
 
-或：
+資料庫欄位使用：
+
+```sql
+price DOUBLE PRECISION
+total_price DOUBLE PRECISION
+```
+
+訂單總價原本也使用一般乘法計算：
 
 ```java
-Double
+product.getPrice() * request.getQuantity()
 ```
 
-處理金額。
-
-### 3. 為什麼是問題
-
-Floating Point 不適合直接處理需要精確計算的金額。
-
-例如某些小數無法使用 binary floating-point 精確表示。
-
-較安全的方式通常是：
-
-```java
-BigDecimal
-```
+`double` 與 `DOUBLE PRECISION` 屬於 Binary Floating Point，部分十進位小數無法精確表示，不適合直接用於商品價格及訂單金額。
 
 例如：
 
 ```java
+0.1 + 0.2
+```
+
+可能得到：
+
+```text
+0.30000000000000004
+```
+
+### 3. 修正內容
+
+#### 3.1 Java 金額欄位改用 BigDecimal
+
+`Product.java` 已修改為：
+
+```java
+@Column(precision = 19, scale = 2, nullable = false)
 private BigDecimal price;
+```
+
+`Order.java` 已修改為：
+
+```java
+@Column(
+    name = "total_price",
+    precision = 19,
+    scale = 2,
+    nullable = false
+)
 private BigDecimal totalPrice;
 ```
 
-**嚴重程度：🟡 中等**
+`ProductRequest.java` 的價格型別已修改為：
 
+```java
+BigDecimal price
+```
+
+`OrderResponse.java` 的訂單總價型別已修改為：
+
+```java
+BigDecimal totalPrice
+```
+
+#### 3.2 訂單金額改用 BigDecimal 計算
+
+`OrderService.java` 已將一般乘法：
+
+```java
+product.getPrice() * request.getQuantity()
+```
+
+改為：
+
+```java
+product.getPrice()
+        .multiply(BigDecimal.valueOf(request.getQuantity()))
+```
+
+避免浮點數精度問題。
+
+#### 3.3 資料庫欄位改用 NUMERIC
+
+`schema.sql` 已將商品價格與訂單總價修改為：
+
+```sql
+price NUMERIC(19, 2)
+total_price NUMERIC(19, 2)
+```
+
+既有 PostgreSQL 欄位也已完成轉型：
+
+```sql
+ALTER TABLE products
+ALTER COLUMN price TYPE NUMERIC(19, 2)
+USING price::NUMERIC(19, 2);
+
+ALTER TABLE orders
+ALTER COLUMN total_price TYPE NUMERIC(19, 2)
+USING total_price::NUMERIC(19, 2);
+```
+**嚴重程度：🟡 中等**
 ### 4. 狀態
 
-⚠️ **待確認**
+✅ **已修正並通過基本功能測試**
 
-### 5. 後續處理
+測試 Request：
 
-完整 Review Entity 與 Order 金額計算邏輯後確認。
+```json
+{
+  "productId": 16,
+  "quantity": 2
+}
+```
+
+商品單價：
+
+```text
+2999.99
+```
+
+API 實際回傳：
+
+```json
+{
+  "id": 5,
+  "productId": 16,
+  "productName": "機械鍵盤",
+  "quantity": 2,
+  "totalPrice": 5999.98
+}
+```
+
+計算結果正確：
+
+```text
+2999.99 × 2 = 5999.98
+```
+
+同時確認訂單建立、庫存扣減及樂觀鎖版本更新仍正常運作：
+
+```text
+stock：9 → 7
+version：1 → 2
+```
+
+### 5. 已提交
+
+```text
+fix: use BigDecimal for monetary values
+```
 
 ---
+
 
 ## CR-013 — Port 8080 衝突造成啟動失敗
 
