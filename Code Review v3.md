@@ -1343,15 +1343,16 @@ netstat -ano | findstr :8080
 
 目前 Spring Boot 已可正常使用 Port 8080 啟動。
 
-### 5. 後續處理
 
-正式 Code Review 中保留，但分類為：
+
+### 5. 已提交
+
+本項屬於執行環境問題，未修改程式碼，因此無須建立獨立 Commit。
 
 ```text
-Environment / Runtime Issue
-```
+No code change required
 
----
+```
 
 ## CR-014 — Java / JAVA_HOME 環境設定造成 Maven 無法正常執行
 
@@ -1422,11 +1423,13 @@ echo $env:JAVA_HOME
 
 目前已統一使用 Java 21。
 
-### 5. 後續處理
+### 5. 已提交
 
-不需要修改 Business Logic。
+本項透過本機 Java 21、`JAVA_HOME` 與 Maven Wrapper 設定完成處理，未修改專案程式碼，因此無須建立獨立 Commit。
 
----
+```text
+No code change required
+```
 
 ## CR-015 — Docker / PostgreSQL 執行環境問題
 
@@ -1485,14 +1488,13 @@ Docker Desktop 與 PostgreSQL Container 已可正常運作。
 
 Spring Boot 目前可成功連線 PostgreSQL。
 
-### 5. 後續處理
+### 5. 已提交
 
-正式報告分類為：
+本項透過啟動 Docker Desktop 與 PostgreSQL Container 完成處理，未修改核心程式碼，因此無須建立獨立 Commit。
 
 ```text
-Development Environment Issue
+No code change required
 ```
-
 ---
 
 # 三、🟢 輕微／程式品質改善
@@ -1691,7 +1693,7 @@ quantity
 ↓
 ✅ Spring Boot 正常啟動
 ↓
-✅ Swagger 正常
+✅ Swagger 正常開啟
 ↓
 ✅ Login 取得 JWT
 ↓
@@ -1701,7 +1703,7 @@ quantity
 ↓
 ✅ GET /api/orders
 ↓
-❌ API 暴露 password
+❌ API 暴露 Password
 ↓
 ✅ @JsonIgnore 修正
 ↓
@@ -1709,7 +1711,7 @@ quantity
 ↓
 ✅ BCrypt 修正
 ↓
-❌ JWT Secret 存在公開 fallback
+❌ JWT Secret 存在公開 Fallback
 ↓
 ✅ JWT_SECRET 環境變數化
 ↓
@@ -1717,13 +1719,29 @@ quantity
 ↓
 ✅ DB_PASSWORD 環境變數化
 ↓
-✅ IntelliJ Run Configuration 設定完成
+❌ Order Response 直接暴露 Entity
 ↓
-✅ Spring Boot 重新啟動成功
+✅ OrderResponse DTO 修正
 ↓
-✅ PostgreSQL 正常連線
+❌ Order Quantity 缺少輸入驗證
 ↓
-✅ Swagger Login / JWT 再驗證成功
+✅ Bean Validation 與 Service 驗證修正
+↓
+❌ 建立訂單與扣減庫存的 Transaction Boundary 不完整
+↓
+✅ @Transactional 修正
+↓
+❌ synchronized 無法完整防止庫存 Race Condition
+↓
+✅ @Version 樂觀鎖修正
+↓
+❌ 金額使用 double / DOUBLE PRECISION
+↓
+✅ BigDecimal / NUMERIC(19,2) 修正
+↓
+✅ Swagger 下單測試成功
+↓
+✅ 庫存與 Version 更新驗證成功
 ↓
 ✅ Git Commit + Push
 ```
@@ -1743,95 +1761,175 @@ Authentication / Authorization 可以運作
 ↓
 主要 Credential Security 問題已處理
 ↓
-進入 Business Logic / Data Consistency Review
+訂單輸入驗證已完成
+↓
+訂單與庫存資料一致性已改善
+↓
+金額精度問題已修正
+↓
+進入 API 文件與其他程式品質 Review
 ```
 
 ---
 
-# 六、已完成 P1 問題
+# 六、已完成問題
 
-| 優先級 | Code Review | 項目 | 狀態 |
-|---|---|---|---|
-| 🔴 P1 | CR-001 | API Password 洩漏 | ✅ 已修正 |
-| 🔴 P1 | CR-002 | Repository / Entity 不一致 | ✅ 已修正 |
-| 🔴 P1 | CR-003 | JWT Filter Bean 問題 | ✅ 已修正 |
-| 🔴 P1 | CR-004 | JWT Method Signature 問題 | ✅ 已修正 |
-| 🔴 P1 | CR-005 | DTO / Service Accessor 問題 | ✅ 已修正 |
-| 🔴 P1 | CR-006 | 使用者密碼明文儲存 | ✅ BCrypt 修正 |
-| 🔴 P1 | CR-007 | JWT Secret 管理 | ✅ 環境變數化 |
-| 🔴 P1 | CR-008 | Database Password 管理 | ✅ 環境變數化 |
+## 6.1 已完成 P1 問題
+
+| 優先級   | Code Review | 項目                        | 狀態          |
+| ----- | ----------- | ------------------------- | ----------- |
+| 🔴 P1 | CR-001      | API Password 洩漏           | ✅ 已修正       |
+| 🔴 P1 | CR-002      | Repository / Entity 不一致   | ✅ 已修正       |
+| 🔴 P1 | CR-003      | JWT Filter Bean 問題        | ✅ 已修正       |
+| 🔴 P1 | CR-004      | JWT Method Signature 問題   | ✅ 已修正       |
+| 🔴 P1 | CR-005      | DTO / Service Accessor 問題 | ✅ 已修正       |
+| 🔴 P1 | CR-006      | 使用者密碼明文儲存                 | ✅ BCrypt 修正 |
+| 🔴 P1 | CR-007      | JWT Secret 管理             | ✅ 環境變數化     |
+| 🔴 P1 | CR-008      | Database Password 管理      | ✅ 環境變數化     |
+
+## 6.2 已完成 P2 問題
+
+| 優先級   | Code Review | 項目                  | 狀態       |
+| ----- | ----------- | ------------------- | -------- |
+| 🟡 P2 | CR-009      | Order Response DTO  | ✅ 已修正    |
+| 🟡 P2 | CR-010      | Quantity Validation | ✅ 已修正並測試 |
+| 🟡 P2 | CR-011      | Transaction / 庫存一致性 | ✅ 已修正並測試 |
+| 🟡 P2 | CR-012      | Money / BigDecimal  | ✅ 已修正並測試 |
+
+## 6.3 已處理環境問題
+
+| 分類          | Code Review | 項目                       | 狀態    |
+| ----------- | ----------- | ------------------------ | ----- |
+| Environment | CR-013      | Port 8080 衝突             | ✅ 已處理 |
+| Environment | CR-014      | Java / JAVA_HOME 設定      | ✅ 已處理 |
+| Environment | CR-015      | Docker / PostgreSQL 執行環境 | ✅ 已處理 |
+
+CR-013～CR-015 屬於本機開發環境與執行環境問題，不是 Business Logic 缺陷，因此不需要修改核心 Java 程式碼。
 
 ---
 
 # 七、下一階段優先順序
 
-| 優先級 | Code Review | 項目 | 狀態 |
-|---|---|---|---|
-| 🟡 P2 | CR-009 | Order Response DTO | ⚠️ 待改善 |
-| 🟡 P2 | CR-010 | Quantity Validation | ⚠️ 待確認 |
-| 🟡 P2 | CR-011 | Transaction / 庫存一致性 | ⚠️ 待確認 |
-| 🟡 P2 | CR-012 | Money / BigDecimal | ⚠️ 待確認 |
-| 🟢 P3 | CR-016 | Swagger 文件完善 | ⚠️ 後續 |
+| 優先級   | Code Review | 項目                         | 狀態          |
+| ----- | ----------- | -------------------------- | ----------- |
+| 🟢 P3 | CR-016      | Swagger 文件完善               | ⚠️ 待處理      |
+| 🟡 P2 | 待編號         | Global Exception Handling  | ⚠️ 待 Review |
+| 🟡 P2 | 待編號         | HTTP Status Code 設計        | ⚠️ 待 Review |
+| 🟡 P2 | 待編號         | ProductService Optional 處理 | ⚠️ 待 Review |
+| 🟡 P2 | 待編號         | JPQL Query Injection 風險    | ⚠️ 待 Review |
+| 🟢 P3 | 待編號         | 測試資料重複初始化                  | ⚠️ 待 Review |
+| 🟢 P3 | 待編號         | 自動化測試補強                    | ⚠️ 待 Review |
 
----
-
-# 八、Draft v0.2 結論
-
-目前第一階段主要處理的是：
+下一階段建議依序處理：
 
 ```text
-Build
-↓
-Startup
-↓
-Security
-↓
-Authentication
-↓
-Credential Protection
-```
-
-目前已修正的主要問題包括：
-
-1. API 暴露 Password
-2. Repository / Entity 不一致造成啟動失敗
-3. JwtAuthenticationFilter Bean 問題
-4. JWT Method Signature 編譯問題
-5. DTO / Service Accessor 編譯問題
-6. 使用者密碼明文儲存
-7. JWT Secret 公開 Fallback
-8. Database Password 硬編碼
-
-目前下一階段不急著增加新功能。
-
-建議優先順序：
-
-```text
-CR-009
-Order Response DTO
-↓
-CR-010
-Input Validation
-↓
-CR-011
-Transaction / Stock Consistency
-↓
-CR-012
-Money / BigDecimal
-↓
 CR-016
 Swagger Documentation
+↓
+Global Exception Handling
+↓
+HTTP Status Code
+↓
+ProductService Optional 處理
+↓
+JPQL 參數化查詢
+↓
+data.sql 重複初始化
+↓
+Automated Tests
 ```
-
-其中 `Validation`、`Transaction`、`Money Calculation` 與訂單 Business Logic 正確性直接相關，應優先於單純的文件與程式碼美化。
 
 ---
 
-> **目前文件狀態：Code Review Draft v0.2**
+# 八、Code Review v3.0 結論
+
+目前已完成三個主要階段：
+
+```text
+第一階段
+Build / Startup / Environment
+↓
+第二階段
+Security / Authentication / Credential Protection
+↓
+第三階段
+Validation / Transaction / Data Consistency / Money Precision
+```
+
+已完成的主要修正包括：
+
+1. 修正 API 暴露 Password
+2. 修正 Repository / Entity 不一致造成的啟動問題
+3. 修正 `JwtAuthenticationFilter` Bean 問題
+4. 修正 JWT Method Signature 編譯問題
+5. 修正 DTO / Service Accessor 編譯問題
+6. 使用 BCrypt 儲存使用者密碼
+7. 將 JWT Secret 改為環境變數
+8. 將 Database Password 改為環境變數
+9. 使用 `OrderResponse` DTO 回傳訂單資料
+10. 使用 Bean Validation 驗證商品 ID 與訂購數量
+11. 將訂單建立與庫存扣減放入同一個 Transaction
+12. 使用 `@Version` 樂觀鎖防止庫存遺失更新
+13. 使用 `BigDecimal` 計算商品價格與訂單總價
+14. 將 PostgreSQL 金額欄位改為 `NUMERIC(19,2)`
+15. 完成 Swagger、JWT、訂單、庫存及金額實際測試
+16. 完成相關 Git Commit 並 Push 至 GitHub
+
+目前核心流程已能正常運作：
+
+```text
+使用者登入
+↓
+取得 JWT
+↓
+Swagger Authorize
+↓
+送出合法訂單
+↓
+驗證使用者與商品
+↓
+檢查商品庫存
+↓
+計算精確訂單金額
+↓
+建立訂單
+↓
+扣減庫存
+↓
+更新樂觀鎖 Version
+↓
+Transaction Commit
+↓
+回傳 OrderResponse DTO
+```
+
+目前下一階段不急著增加新功能，應繼續改善：
+
+```text
+API 文件完整性
+↓
+錯誤處理一致性
+↓
+HTTP Status Code
+↓
+Repository / Query 安全性
+↓
+測試資料初始化
+↓
+自動化測試
+```
+
+---
+
+> **目前文件狀態：Code Review v3.0**
 >
-> 本文件仍屬初步 Code Review。
+> 本文件已完成 P1 Security / Startup 問題，以及主要 P2 Business Logic / Data Consistency 問題的修正與驗證。
 >
-> 後續將繼續通讀完整專案原始碼，把所有「⚠️ 待確認」項目逐一改成：
+> CR-009～CR-012 已由「待確認」更新為「已修正並測試」。
+>
+> CR-013～CR-015 已確認為 Development Environment / Runtime Issue，不需要修改核心 Business Logic。
+>
+> 後續將繼續通讀完整專案原始碼，針對所有剩餘項目補充：
 >
 > 1. 明確檔案位置
 > 2. 實際問題程式碼
@@ -1840,4 +1938,4 @@ Swagger Documentation
 > 5. Swagger / Runtime 測試結果
 > 6. Git Commit 紀錄
 >
-> 完成後再整理為正式 Code Review 版本。
+> 下一階段將由 CR-016 Swagger Documentation 開始，並繼續整理後續 Code Review 項目。
