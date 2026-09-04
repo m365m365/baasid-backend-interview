@@ -879,80 +879,252 @@ fix: validate order request quantity
 
 ---
 
-## CR-011 — 訂單建立與庫存扣減 Transaction 需要確認
+## ## CR-011 — 訂單建立與庫存扣減 Transaction 需要確認
 
 ### 1. 位置
 
-待完整 Review：
+已完成 Review：
 
-- `OrderService.java`
-- `OrderRepository.java`
-- `ProductRepository.java`
+* `OrderService.java`
+* `OrderRepository.java`
+* `ProductRepository.java`
+* `Product.java`
+* `schema.sql`
 
-### 2. 問題描述
+### 2. 原始問題
 
-目前：
+原本庫存扣減位於獨立方法：
+
+```java
+@Transactional
+public synchronized void deductStock(Product product, int quantity)
+```
+
+但該方法由同一個 `OrderService` 內的 `placeOrder()` 呼叫，可能因為 Self-invocation 繞過 Spring Proxy，導致方法本身的 `@Transactional` 不生效。
+
+此外，庫存扣減與訂單建立不在同一個 Transaction Boundary，可能發生：
+
+```text
+庫存扣減成功
+↓
+訂單建立失敗
+↓
+資料不一致
+```
+
+原本的 `synchronized` 也只能保護同一個 JVM 內的 `OrderService` 實例，無法防止多台應用程式同時更新相同商品。
+
+### 3. 修正內容
+
+#### 3.1 完整下單流程使用同一個 Transaction
+
+已將 `@Transactional` 加在完整業務流程入口：
+
+```java
+@Transactional
+public OrderResponse placeOrder(String username, OrderRequest request)
+```
+
+下列操作現在位於同一個 Transaction 中：
+
+```text
+驗證訂單資料
+↓
+查詢使用者與商品
+↓
+檢查庫存
+↓
+扣減商品庫存
+↓
+建立訂單
+↓
+Transaction Commit
+```
+
+若其中任何步驟拋出 Runtime Exception，訂單建立與庫存修改會一起 Rollback。
+
+#### 3.2 移除獨立庫存 Transaction 與 synchronized
+
+已移除：
+
+```java
+@Transactional
+public synchronized void deductStock(...)
+```
+
+庫存改為直接在 `placeOrder()` 中扣減：
+
+```java
+product.setStock(
+        product.getStock() - request.getQuantity()
+);
+```
+
+`Product` 是目前 Transaction 管理中的 Entity，因此 Hibernate 會透過 Dirty Checking，在提交 Transaction 時更新庫存。
+
+#### 3.3 加入樂觀鎖
+
+`Product.java` 已加入：
+
+```java
+@Version
+private Long version;
+```
+
+Hibernate 更新商品時會檢查版本，例如：
+
+```sql
+UPDATE products
+SET stock = ?, version = ?
+WHERE id = ? AND version = ?;
+```
+
+若兩個 Request 同時讀取並修改相同商品，先完成的 Transaction 會更新版本；後完成的 Transaction 因版本不一致而失敗並回滾，避免 Lost Update 與超賣。
+
+#### 3.4 更新資料庫欄位
+
+`schema.sql` 已加入：
+
+```sql
+version BIGINT NOT NULL DEFAULT 0
+```
+
+既有 PostgreSQL 資料也已完成：
+
+```sql
+UPDATE products
+SET version = 0
+WHERE version IS NULL;
+
+ALTER TABLE products
+ALTER COLUMN version SET DEFAULT 0;
+
+ALTER TABLE products
+ALTER COLUMN version SET NOT NULL;
+```
+
+#### 3.5 改善資料查詢與驗證
+
+使用者與商品查詢已由：
+
+```java
+.orElse(null)
+```
+
+改為：
+
+```java
+.orElseThrow(...)
+```
+
+避免查不到資料後繼續執行，造成 `NullPointerException`。
+
+訂單資料也已加入實際檢查：
+
+```java
+private boolean validateOrder(OrderRequest request) {
+    return request != null
+            && request.getProductId() != null
+            && request.getQuantity() != null
+            && request.getQuantity() > 0;
+}
+```
+
+#### 3.6 修正總價計算
+
+已正確設定訂單總價：
+
+```java
+order.setTotalPrice(
+        product.getPrice() * request.getQuantity()
+);
+```
+
+並移除將商品價格轉成 `int` 的寫法，避免小數金額遺失。
+
+### 4. 驗證結果
+
+使用 Swagger 執行：
 
 ```http
 POST /api/orders
 ```
 
-已經可以成功建立訂單。
-
-例如：
+Request：
 
 ```json
 {
-  "productId": 1,
-  "quantity": 2
+  "productId": 16,
+  "quantity": 1
 }
 ```
 
-但仍需要確認：
+API 回傳：
+
+```json
+{
+  "id": 4,
+  "productId": 16,
+  "productName": "機械鍵盤",
+  "quantity": 1,
+  "totalPrice": 2999.99
+}
+```
+
+HTTP Status：
 
 ```text
-檢查庫存
-↓
-扣除 Product Stock
-↓
-建立 Order
+200 OK
 ```
 
-是否確實在同一個 Transaction Boundary 中完成。
-
-### 3. 為什麼是問題
-
-如果訂單建立與庫存更新不在正確 Transaction 中，可能發生：
+下單前商品資料：
 
 ```text
-Order 建立成功
-↓
-Stock 更新失敗
-↓
-Database 資料不一致
+stock = 10
+version = 0
 ```
 
-另外，多個 Request 同時購買相同商品時，也需要確認是否存在庫存 Race Condition。
+下單後查詢 PostgreSQL：
 
-建議進一步檢查：
-
-```java
-@Transactional
+```sql
+SELECT id, name, stock, version
+FROM products
+WHERE id = 16;
 ```
 
-以及庫存更新的 Concurrent Access 設計。
+結果：
+
+```text
+id = 16
+name = 機械鍵盤
+stock = 9
+version = 1
+```
+
+確認：
+
+* 訂單建立成功
+* 商品庫存正確扣減
+* 商品版本由 `0` 增加為 `1`
+* 商品價格 `2999.99` 未遺失小數
+* Transaction 與 JPA 樂觀鎖正常運作
+
+### 5. Review 結論
 
 **嚴重程度：🟡 中等**
 
-### 4. 狀態
+✅ **已修正並通過基本功能測試**
 
-⚠️ **待確認**
+目前訂單建立與庫存扣減已位於相同 Transaction Boundary，並使用 `@Version` 樂觀鎖防止並發更新造成庫存資料遺失。
 
-### 5. 後續處理
+後續可再增加自動化並發測試，驗證兩個 Request 同時購買最後一件商品時，只允許其中一筆訂單成功。
+```text
+fix: ensure atomic order creation and stock deduction
+```
 
-下一階段優先 Review `OrderService` 的 Transaction 與庫存扣減流程。
 
 ---
+
 
 ## CR-012 — 金額資料型別需要確認
 

@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS products (
     name        VARCHAR(255),
     price       DOUBLE PRECISION,
     stock       INT,
+    version    BIGINT NOT NULL DEFAULT 0,
     created_at  TIMESTAMP DEFAULT now()
 );
 
