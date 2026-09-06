@@ -21,6 +21,11 @@
 15. 完成 Swagger、JWT、訂單、庫存及金額功能的實際測試。
 16. 完成相關 Git Commit，並 Push 至 GitHub。
 
+    ## Git History
+
+本專案使用 Git 進行版本控制，完整的修改紀錄已保留於 GitHub Repository 
+的 Commit History 中。
+
 ## 2. 第三部分功能選擇與設計理由
 
 ### 2.1 選擇項目
