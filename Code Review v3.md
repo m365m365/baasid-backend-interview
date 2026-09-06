@@ -1,4 +1,4 @@
-# Code Review v2 草稿
+# Code Review v3 草稿
 
 ## Review 狀態
 
@@ -1563,6 +1563,598 @@ Swagger JWT Authentication 流程已可以正常運作。
 ### 5. 後續處理
 
 等主要 Security、Validation、Transaction、Money Calculation 問題處理完成後，再完善 Swagger Documentation。
+
+---
+
+## CR-017 — Spring Security 預設 UserDetailsService 導致 Generated Security Password
+
+### 1. 位置
+
+已完成 Review：
+
+- `config/SecurityConfig.java`
+- `repository/UserRepository.java`
+- `entity/User.java`
+- Spring Security Startup Log
+
+### 2. 問題描述
+
+目前專案已經使用自訂的 JWT Authentication：
+
+```text
+Login
+↓
+AuthService 驗證帳號密碼
+↓
+JwtUtil 產生 JWT
+↓
+JwtAuthenticationFilter 驗證 Bearer Token
+↓
+SecurityContext
+```
+
+但是 Spring Boot 啟動時仍出現：
+
+```text
+Using generated security password: ...
+```
+
+並且 Startup Log 顯示：
+
+```text
+Global AuthenticationManager configured with
+UserDetailsService bean with name inMemoryUserDetailsManager
+```
+
+代表 Spring Security 沒有找到專案自訂的 `UserDetailsService`，
+因此仍然自動建立預設的：
+
+```text
+InMemoryUserDetailsManager
+```
+
+以及隨機產生的 Development Password。
+
+雖然目前 JWT Login 已經可以正常運作，但這代表系統中同時存在：
+
+```text
+自訂 JWT Authentication
++
+Spring Security 預設 In-Memory Authentication
+```
+
+Authentication 架構不夠明確。
+
+### 3. 為什麼是問題
+
+目前專案的使用者帳號應該來自：
+
+```text
+PostgreSQL
+↓
+users table
+↓
+UserRepository
+```
+
+而不是由 Spring Boot 額外建立一組記憶體中的預設帳號。
+
+如果保留預設 `InMemoryUserDetailsManager`，可能造成：
+
+- Authentication 架構不清楚
+- 開發者誤以為 generated password 是正式登入密碼
+- JWT Authentication 與 Spring Security Default Authentication 並存
+- Production Configuration 容易產生誤解
+- Security 設定與實際 Database User Model 不一致
+
+因此應明確提供專案自己的 `UserDetailsService`。
+
+**嚴重程度：🟡 中等**
+
+### 4. 修正內容
+
+已在 `SecurityConfig.java` 加入自訂：
+
+```java
+@Bean
+public UserDetailsService userDetailsService() {
+    return username -> {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() ->
+                        new UsernameNotFoundException(
+                                "User not found: " + username
+                        )
+                );
+
+        return org.springframework.security.core.userdetails.User
+                .withUsername(user.getUsername())
+                .password(user.getPassword())
+                .roles(user.getRole())
+                .build();
+    };
+}
+```
+
+並透過：
+
+```java
+private final UserRepository userRepository;
+```
+
+取得 Database 中的使用者資料。
+
+Authentication User Source 因此改為：
+
+```text
+Spring Security
+↓
+UserDetailsService
+↓
+UserRepository
+↓
+PostgreSQL users
+```
+
+不再依賴 Spring Boot 自動建立的：
+
+```text
+InMemoryUserDetailsManager
+```
+
+### 5. 驗證結果
+
+修改後重新啟動 Spring Boot。
+
+確認原本：
+
+```text
+Using generated security password
+```
+
+不再出現。
+
+接著透過 Swagger 執行：
+
+```http
+POST /api/auth/login
+```
+
+使用管理員帳號登入。
+
+Console 顯示：
+
+```text
+管理員登入: admin
+使用者登入成功: admin
+```
+
+API 回傳：
+
+```text
+HTTP 200
+JWT Token
+```
+
+取得 JWT 後，再透過 Swagger Authorize 呼叫：
+
+```http
+GET /api/orders
+```
+
+結果：
+
+```text
+HTTP 200
+```
+
+代表：
+
+```text
+Database User
+↓
+Login
+↓
+BCrypt Password Validation
+↓
+JWT
+↓
+Swagger Authorize
+↓
+Protected API
+```
+
+仍可正常運作。
+
+### 6. 狀態
+
+✅ **已修正並通過 Swagger Login / JWT 驗證**
+
+目前 Spring Security 已使用專案自己的 Database User Model，
+不再依賴 Spring Boot 自動產生的 Development User Password。
+
+### 7. 建議 Git Commit
+
+```text
+fix: configure database-backed UserDetailsService
+```
+
+---
+
+## CR-018 — data.sql 重複初始化造成 Username 重複資料
+
+### 1. 位置
+
+已完成 Review：
+
+- `src/main/resources/data.sql`
+- `src/main/resources/schema.sql`
+- `entity/User.java`
+- PostgreSQL `users` table
+
+### 2. 問題描述
+
+`data.sql` 使用：
+
+```sql
+INSERT INTO users (username, password, role)
+VALUES (...)
+ON CONFLICT DO NOTHING;
+```
+
+原本預期 Spring Boot 每次啟動時，即使再次執行 `data.sql`，
+也不會重複建立相同使用者。
+
+但實際查詢 Database：
+
+```sql
+SELECT
+    username,
+    COUNT(*)
+FROM users
+GROUP BY username
+HAVING COUNT(*) > 1;
+```
+
+發現：
+
+```text
+username | count
+---------+------
+alice    | 3
+```
+
+進一步查詢：
+
+```sql
+SELECT
+    id,
+    username,
+    role,
+    LEFT(password, 4) AS password_prefix,
+    LENGTH(password) AS password_length
+FROM users
+WHERE username = 'alice'
+ORDER BY id;
+```
+
+發現 Database 中存在多筆：
+
+```text
+alice
+```
+
+資料。
+
+這代表原本的：
+
+```sql
+ON CONFLICT DO NOTHING
+```
+
+實際上沒有阻止 Username 重複。
+
+### 3. Root Cause
+
+`ON CONFLICT DO NOTHING` 必須有實際可以產生 Conflict 的：
+
+```text
+PRIMARY KEY
+或
+UNIQUE Constraint
+```
+
+原本 `users.username` 並沒有 UNIQUE Constraint。
+
+因此每次執行：
+
+```sql
+INSERT INTO users (...)
+VALUES ('alice', ... )
+ON CONFLICT DO NOTHING;
+```
+
+PostgreSQL 都認為這是一筆合法的新資料。
+
+流程變成：
+
+```text
+Spring Boot 啟動
+↓
+data.sql 執行
+↓
+INSERT alice
+↓
+username 沒有 UNIQUE Constraint
+↓
+沒有 Conflict
+↓
+新增成功
+↓
+下一次 Spring Boot 啟動
+↓
+再次 INSERT alice
+↓
+再次新增成功
+```
+
+因此產生重複使用者資料。
+
+### 4. 為什麼是問題
+
+Username 在 Authentication System 中應具有唯一性。
+
+如果允許：
+
+```text
+alice
+alice
+alice
+```
+
+同時存在，可能造成：
+
+- `findByUsername()` 查詢結果不唯一
+- Login Authentication 行為不確定
+- Spring Data JPA 可能發生 NonUniqueResultException
+- 同一 Username 對應多個 User ID
+- Order 與 User 關聯可能產生資料一致性問題
+- `ON CONFLICT DO NOTHING` 無法發揮原本預期效果
+- Spring Boot 每次啟動都可能增加重複測試資料
+
+**嚴重程度：🟡 中等**
+
+### 5. 修正內容
+
+#### 5.1 找出重複 Username
+
+先執行：
+
+```sql
+SELECT
+    username,
+    COUNT(*)
+FROM users
+GROUP BY username
+HAVING COUNT(*) > 1;
+```
+
+確認存在重複的：
+
+```text
+alice
+```
+
+資料。
+
+#### 5.2 清除既有重複資料
+
+在確認需要保留的 User Record 後，
+刪除多餘的重複測試資料。
+
+再次執行：
+
+```sql
+SELECT
+    username,
+    COUNT(*)
+FROM users
+GROUP BY username
+HAVING COUNT(*) > 1;
+```
+
+結果：
+
+```text
+0 rows
+```
+
+確認 Database 已不存在重複 Username。
+
+#### 5.3 Database 加入 UNIQUE Constraint
+
+執行：
+
+```sql
+ALTER TABLE users
+ADD CONSTRAINT uk_users_username UNIQUE (username);
+```
+
+PostgreSQL 成功建立：
+
+```text
+uk_users_username
+UNIQUE CONSTRAINT
+btree (username)
+```
+
+因此 Database 現在會直接保證：
+
+```text
+username UNIQUE
+```
+
+#### 5.4 schema.sql 同步修改
+
+除了修改目前本機 Database，
+也應將 Constraint 寫回版本控制中的：
+
+```text
+schema.sql
+```
+
+例如：
+
+```sql
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    role VARCHAR(255)
+);
+```
+
+或使用 Named Constraint：
+
+```sql
+CONSTRAINT uk_users_username UNIQUE (username)
+```
+
+避免其他開發者重新建立 Database 後再次出現相同問題。
+
+#### 5.5 User Entity 同步表達唯一性
+
+`User.java` 建議同步設定：
+
+```java
+@Column(nullable = false, unique = true)
+private String username;
+```
+
+讓：
+
+```text
+Java Entity
+↓
+username unique
+```
+
+與：
+
+```text
+PostgreSQL Schema
+↓
+username UNIQUE
+```
+
+保持一致。
+
+真正保證資料唯一性的最終防線仍為 Database UNIQUE Constraint。
+
+### 6. 修正後的 data.sql 行為
+
+現在：
+
+```sql
+INSERT INTO users (username, password, role)
+VALUES (
+    'alice',
+    'BCrypt Hash...',
+    'USER'
+)
+ON CONFLICT DO NOTHING;
+```
+
+第一次啟動：
+
+```text
+alice 不存在
+↓
+INSERT 成功
+```
+
+第二次啟動：
+
+```text
+alice 已存在
+↓
+違反 username UNIQUE
+↓
+產生 Conflict
+↓
+ON CONFLICT DO NOTHING
+↓
+不重複 INSERT
+```
+
+因此 `data.sql` 可以保持 Idempotent：
+
+```text
+執行一次
+=
+執行多次
+```
+
+不會因為 Spring Boot 重複啟動而持續增加相同測試帳號。
+
+### 7. 驗證結果
+
+執行：
+
+```sql
+\d users
+```
+
+確認：
+
+```text
+Indexes:
+    "users_pkey" PRIMARY KEY, btree (id)
+    "uk_users_username" UNIQUE CONSTRAINT, btree (username)
+```
+
+代表 Username Unique Constraint 已成功建立。
+
+再次檢查：
+
+```sql
+SELECT
+    username,
+    COUNT(*)
+FROM users
+GROUP BY username
+HAVING COUNT(*) > 1;
+```
+
+結果：
+
+```text
+0 rows
+```
+
+確認：
+
+- 重複 Username 已清除
+- Database UNIQUE Constraint 已建立
+- `ON CONFLICT DO NOTHING` 現在具有實際作用
+- 後續 Spring Boot 重啟不應再建立相同 Username
+- Authentication User Data 唯一性已由 Database 保護
+
+### 8. 狀態
+
+✅ **已修正並完成 Database 驗證**
+
+目前 `users.username` 已具有 Database UNIQUE Constraint，
+`data.sql` 的 `ON CONFLICT DO NOTHING` 可以正確防止測試帳號重複初始化。
+
+### 9. s Git Commit
+
+
+
+```text
+fix: harden user authentication and seed data
+```
+
+
 
 ---
 
