@@ -22,3 +22,14 @@ CREATE TABLE IF NOT EXISTS orders (
                                       total_price NUMERIC(19, 2),
     created_at  TIMESTAMP DEFAULT now()
     );
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+                                          id BIGSERIAL PRIMARY KEY,
+                                          operator VARCHAR(100) NOT NULL,
+    action VARCHAR(20) NOT NULL,
+    entity_type VARCHAR(50) NOT NULL,
+    entity_id BIGINT,
+    before_data JSONB,
+    after_data JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );

@@ -6,6 +6,7 @@ import com.trading.platform.repository.ProductRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -13,32 +14,87 @@ import java.util.List;
 public class ProductService {
 
     private final ProductRepository productRepository;
+    private final AuditLogService auditLogService;
+
 
     @PersistenceContext
     private EntityManager entityManager;
 
-    public ProductService(ProductRepository productRepository) {
+    public ProductService(ProductRepository productRepository,
+                          AuditLogService auditLogService) {
         this.productRepository = productRepository;
+        this.auditLogService = auditLogService;
     }
 
-    public Product createProduct(ProductRequest request) {
+    @Transactional
+    public Product createProduct(ProductRequest request, String operator) {
+
         Product p = new Product();
         p.setName(request.name());
         p.setPrice(request.price());
         p.setStock(request.stock());
-        return productRepository.save(p);
+
+        Product savedProduct = productRepository.save(p);
+
+        auditLogService.log(
+                operator,
+                "CREATE",
+                "PRODUCT",
+                savedProduct.getId(),
+                null,
+                savedProduct
+        );
+
+        return savedProduct;
     }
 
-    public Product updateProduct(Long id, ProductRequest request) {
-        Product p = productRepository.findById(id).get();
+    @Transactional
+    public Product updateProduct(Long id,
+                                 ProductRequest request,
+                                 String operator) {
+
+        Product p = productRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Product not found"));
+
+        Product before = new Product();
+        before.setName(p.getName());
+        before.setPrice(p.getPrice());
+        before.setStock(p.getStock());
+
         p.setName(request.name());
         p.setPrice(request.price());
         p.setStock(request.stock());
-        return productRepository.save(p);
+
+        Product savedProduct = productRepository.save(p);
+
+        auditLogService.log(
+                operator,
+                "UPDATE",
+                "PRODUCT",
+                savedProduct.getId(),
+                before,
+                savedProduct
+        );
+
+        return savedProduct;
     }
 
-    public void deleteProduct(Long id) {
-        productRepository.deleteById(id);
+    @Transactional
+    public void deleteProduct(Long id, String operator) {
+
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Product not found"));
+
+        auditLogService.log(
+                operator,
+                "DELETE",
+                "PRODUCT",
+                product.getId(),
+                product,
+                null
+        );
+
+        productRepository.delete(product);
     }
 
     public List<Product> listProducts() {
