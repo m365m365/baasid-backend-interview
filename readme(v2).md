@@ -6,15 +6,15 @@
 
 ### 主要技術
 
-- Java 21
-- Spring Boot 4
-- Spring Security
-- JWT
-- Spring Data JPA
-- PostgreSQL
-- Swagger / OpenAPI
-- Maven
-- Docker Compose
+* Java 21
+* Spring Boot 4
+* Spring Security
+* JWT
+* Spring Data JPA
+* PostgreSQL
+* Swagger / OpenAPI
+* Maven
+* Docker Compose
 
 ---
 
@@ -41,8 +41,11 @@
 17. 記錄操作類型、資料類型、資料 ID，以及修改前後的 JSON 資料。
 18. 使用 `JpaSpecificationExecutor` 完成 Audit Log 動態條件查詢。
 19. Audit Log 支援依 `operator`、`action`、`entityType`、`entityId` 單獨或組合查詢。
-20. 完成 Swagger、JWT、商品、訂單、庫存、金額及 Audit Log 的實際測試。
-21. 保留相關 Git Commit 紀錄，並將修改 Push 至 GitHub。
+20. Audit Log 查詢結果依 `createdAt` 倒序排列，最新操作優先顯示。
+21. 使用獨立資料快照保存完整的 `beforeData`。
+22. 使用 `saveAndFlush()` 確保 `afterData` 記錄更新完成後的樂觀鎖版本。
+23. 完成 Swagger、JWT、商品、訂單、庫存、金額及 Audit Log 的實際測試。
+24. 保留相關 Git Commit 紀錄，並將修改 Push 至 GitHub。
 
 ---
 
@@ -56,49 +59,83 @@
 
 交易平台中的商品價格、庫存及商品資料變更，可能直接影響訂單與交易結果。因此，系統需要保存操作紀錄，方便確認：
 
-- 由誰執行操作。
-- 執行了什麼操作。
-- 操作發生的時間。
-- 被操作的資料類型與資料 ID。
-- 修改前與修改後的資料。
+* 由誰執行操作。
+* 執行了什麼操作。
+* 操作發生的時間。
+* 被操作的資料類型與資料 ID。
+* 修改前與修改後的資料。
 
 ### 3.2 已完成內容
 
 已建立以下 Audit Log 元件：
 
-- `AuditLog` Entity
-- `AuditLogRepository`
-- `AuditLogService`
-- `AuditLogController`
-- PostgreSQL `audit_logs` 資料表
+* `AuditLog` Entity
+* `AuditLogRepository`
+* `AuditLogService`
+* `AuditLogController`
+* PostgreSQL `audit_logs` 資料表
 
 商品進行下列操作時，系統會自動寫入日誌：
 
-- `CREATE`：新增商品
-- `UPDATE`：修改商品
-- `DELETE`：刪除商品
+* `CREATE`：新增商品
+* `UPDATE`：修改商品
+* `DELETE`：刪除商品
 
 每筆日誌記錄以下欄位：
 
-- `operator`
-- `action`
-- `entityType`
-- `entityId`
-- `beforeData`
-- `afterData`
-- `createdAt`
+* `operator`
+* `action`
+* `entityType`
+* `entityId`
+* `beforeData`
+* `afterData`
+* `createdAt`
 
 欄位說明：
 
-- `operator`：由 Spring Security 的 `SecurityContext` 取得目前登入的使用者。
-- `action`：記錄 `CREATE`、`UPDATE` 或 `DELETE`。
-- `entityType`：記錄被操作的資料類型，目前為 `PRODUCT`。
-- `entityId`：記錄被操作的商品 ID。
-- `beforeData`：保存修改或刪除前的資料。
-- `afterData`：保存新增或修改後的資料。
-- `createdAt`：記錄操作發生時間。
+* `operator`：由 Spring Security 的 `SecurityContext` 取得目前登入的使用者。
+* `action`：記錄 `CREATE`、`UPDATE` 或 `DELETE`。
+* `entityType`：記錄被操作的資料類型，目前為 `PRODUCT`。
+* `entityId`：記錄被操作的商品 ID。
+* `beforeData`：保存修改或刪除前的資料。
+* `afterData`：保存新增或修改後的資料。
+* `createdAt`：記錄操作發生時間。
 
 修改前後的資料會轉換成 JSON 字串保存，方便追蹤完整的資料變更內容。
+
+更新商品時，系統會先使用獨立的 `Map` 保存修改前的完整資料快照，避免商品 Entity 更新後連帶改變 `beforeData`。
+
+修改前快照包含：
+
+* 商品 ID
+* 商品名稱
+* 商品價格
+* 商品庫存
+* 樂觀鎖版本
+* 商品建立時間
+
+商品使用 `saveAndFlush()` 完成資料庫更新及樂觀鎖版本遞增後，再寫入操作日誌，以確保 `afterData` 保存的是實際更新完成後的資料。
+
+例如，商品更新前後的版本應為：
+
+```text
+beforeData.version = 6
+afterData.version  = 7
+```
+
+其中：
+
+```text
+Product ID      = 100
+Product version = 7
+AuditLog ID     = 8
+```
+
+`Product ID`、`Product version` 和 `AuditLog ID` 是三種不同的數值：
+
+* `Product ID`：商品的固定編號。
+* `Product version`：商品每次更新時遞增的樂觀鎖版本。
+* `AuditLog ID`：每一筆操作日誌的流水號。
 
 ### 3.3 Audit Log 查詢 API
 
@@ -168,6 +205,32 @@ Specification<AuditLog>
 
 只有實際傳入的參數才會加入查詢條件，多個條件之間使用 `AND` 組合。
 
+查詢結果會依照 `createdAt` 倒序排列，讓最新的操作日誌顯示在回傳陣列最前面：
+
+```java
+Sort.by(Sort.Direction.DESC, "createdAt")
+```
+
+大致相當於：
+
+```sql
+ORDER BY created_at DESC
+```
+
+Java 程式使用的是 AuditLog Entity 的屬性名稱：
+
+```java
+"createdAt"
+```
+
+資料庫實際使用的欄位名稱則是：
+
+```sql
+created_at
+```
+
+兩者由 JPA Entity 的欄位對應負責轉換。
+
 ### 3.4 設計理由
 
 選擇 Audit Log 的主要原因如下：
@@ -177,7 +240,10 @@ Specification<AuditLog>
 3. 明確記錄操作者，強化責任歸屬。
 4. 方便調查安全事件或人為操作錯誤。
 5. 保留商品修改前後的資料，方便比對差異。
-6. 使用 `Specification` 實作動態查詢，未來容易繼續加入日期、分頁及排序等條件。
+6. 使用 `Specification` 實作動態查詢，未來容易繼續加入日期區間及分頁等條件。
+7. 查詢結果依操作時間倒序排列，方便優先查看最新操作。
+8. 使用獨立快照保存修改前資料，避免 Entity 更新造成歷史資料失真。
+9. 使用 `saveAndFlush()` 確保 Audit Log 保存正確的更新後版本。
 
 ---
 
@@ -187,9 +253,9 @@ Specification<AuditLog>
 
 啟動前請先安裝：
 
-- JDK 21
-- Docker Desktop
-- Git
+* JDK 21
+* Docker Desktop
+* Git
 
 確認 Java 版本：
 
@@ -289,8 +355,14 @@ Linux 或 macOS：
 3. 開啟 Swagger UI。
 4. 呼叫登入 API 取得 JWT。
 5. 點擊 Swagger 的 `Authorize`。
-6. 貼上 JWT 並完成授權。
+6. 只貼上 JWT 字串並完成授權。
 7. 測試商品、訂單及 Audit Log API。
+
+Swagger 的 JWT 應產生類似以下 Header：
+
+```http
+Authorization: Bearer eyJ...
+```
 
 ### 5.3 Audit Log 測試流程
 
@@ -301,6 +373,8 @@ Linux 或 macOS：
 5. 使用 `operator`、`action`、`entityType`、`entityId` 測試單一條件。
 6. 同時輸入多個條件，確認組合查詢結果。
 7. 使用不存在的 `entityId`，確認系統正常回傳空陣列。
+8. 連續修改同一商品，確認最新日誌位於回傳陣列最前面。
+9. 確認 `beforeData` 與 `afterData` 的商品版本號正確遞增。
 
 單一條件測試：
 
@@ -344,19 +418,30 @@ GET /api/audit-logs?operator=admin&action=CREATE&entityType=PRODUCT&entityId=100
 200 OK
 ```
 
+### 5.4 Audit Log 測試結果
+
+實際測試已確認：
+
+* 最新操作日誌位於回傳陣列最前面。
+* `beforeData` 完整保存商品 ID、名稱、價格、庫存、版本及建立時間。
+* `afterData` 保存更新完成後的商品資料。
+* 商品樂觀鎖版本由修改前的 `6` 正確增加為修改後的 `7`。
+* 不存在的 `entityId` 會正常回傳空陣列。
+* 多個條件能以 `AND` 正確組合查詢。
+
 實際測試回傳的 Audit Log 範例：
 
 ```json
 [
   {
-    "id": 1,
+    "id": 8,
     "operator": "admin",
-    "action": "CREATE",
+    "action": "UPDATE",
     "entityType": "PRODUCT",
     "entityId": 100,
-    "beforeData": null,
-    "afterData": "{\"id\":100,\"name\":\"Keyboard\",\"price\":1200,\"stock\":10}",
-    "createdAt": "2026-09-06T21:47:31"
+    "beforeData": "{\"id\":100,\"name\":\"Gaming Keyboard Pro 4\",\"price\":1900.00,\"stock\":2,\"version\":6,\"createdAt\":\"2026-09-06T21:47:31.422899\"}",
+    "afterData": "{\"id\":100,\"name\":\"Gaming Keyboard Pro 5\",\"price\":2000,\"stock\":1,\"version\":7,\"createdAt\":\"2026-09-06T21:47:31.422899\"}",
+    "createdAt": "2026-09-07T01:06:14.330197"
   }
 ]
 ```
@@ -365,15 +450,14 @@ GET /api/audit-logs?operator=admin&action=CREATE&entityType=PRODUCT&entityId=100
 
 ## 6. 後續可改進項目
 
-目前 Audit Log 已完成基本記錄及動態條件查詢，後續可以繼續加入：
+目前 Audit Log 已完成基本記錄、動態條件查詢、Entity ID 查詢及時間倒序排列，後續可以繼續加入：
 
-- 依日期區間查詢。
-- 查詢結果分頁。
-- 依操作時間倒序排列。
-- 限制只有 `ADMIN` 可以查詢 Audit Log。
-- 使用 Audit Log Response DTO，避免直接回傳 Entity。
-- 自動遮蔽密碼、JWT 及資料庫憑證等敏感資訊。
-- 為 Audit Log 查詢功能增加自動化測試。
+* 依日期區間查詢。
+* 查詢結果分頁。
+* 限制只有 `ADMIN` 可以查詢 Audit Log。
+* 使用 Audit Log Response DTO，避免直接回傳 Entity。
+* 自動遮蔽密碼、JWT 及資料庫憑證等敏感資訊。
+* 為 Audit Log 查詢功能增加自動化測試。
 
 ---
 
@@ -391,4 +475,16 @@ Audit Log 動態條件查詢相關 Commit：
 
 ```text
 b4704cc feat: add dynamic audit log search
+```
+
+README v2 更新相關 Commit：
+
+```text
+d933b2d docs: update README to v2
+```
+
+Audit Log `entityId` 查詢相關 Commit：
+
+```text
+55b1e7c feat: add entity ID filter to audit log search
 ```

@@ -9,6 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Service
 public class ProductService {
@@ -34,7 +36,7 @@ public class ProductService {
         p.setPrice(request.price());
         p.setStock(request.stock());
 
-        Product savedProduct = productRepository.save(p);
+        Product savedProduct = productRepository.saveAndFlush(p);
 
         auditLogService.log(
                 operator,
@@ -54,18 +56,24 @@ public class ProductService {
                                  String operator) {
 
         Product p = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+                .orElseThrow(() ->
+                        new RuntimeException("Product not found")
+                );
 
-        Product before = new Product();
-        before.setName(p.getName());
-        before.setPrice(p.getPrice());
-        before.setStock(p.getStock());
+        Map<String, Object> before = new LinkedHashMap<>();
+
+        before.put("id", p.getId());
+        before.put("name", p.getName());
+        before.put("price", p.getPrice());
+        before.put("stock", p.getStock());
+        before.put("version", p.getVersion());
+        before.put("createdAt", p.getCreatedAt());
 
         p.setName(request.name());
         p.setPrice(request.price());
         p.setStock(request.stock());
 
-        Product savedProduct = productRepository.save(p);
+        Product savedProduct = productRepository.saveAndFlush(p);
 
         auditLogService.log(
                 operator,

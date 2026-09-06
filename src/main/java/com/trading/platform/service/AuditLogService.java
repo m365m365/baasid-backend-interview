@@ -3,6 +3,7 @@ package com.trading.platform.service;
 import com.trading.platform.entity.AuditLog;
 import com.trading.platform.repository.AuditLogRepository;
 import jakarta.persistence.criteria.Predicate;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.json.JsonMapper;
@@ -98,7 +99,10 @@ public class AuditLogService {
                     );
                 };
 
-        return auditLogRepository.findAll(specification);
+        return auditLogRepository.findAll(
+                specification,
+                Sort.by(Sort.Direction.DESC, "createdAt")
+        );
     }
 
     private String toJson(Object data) {
