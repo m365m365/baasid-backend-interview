@@ -40,7 +40,7 @@
 16. 從 Spring Security `SecurityContext` 取得目前登入的操作者。
 17. 記錄操作類型、資料類型、資料 ID，以及修改前後的 JSON 資料。
 18. 使用 `JpaSpecificationExecutor` 完成 Audit Log 動態條件查詢。
-19. Audit Log 支援依 `operator`、`action`、`entityType` 單獨或組合查詢。
+19. Audit Log 支援依 `operator`、`action`、`entityType`、`entityId` 單獨或組合查詢。
 20. 完成 Swagger、JWT、商品、訂單、庫存、金額及 Audit Log 的實際測試。
 21. 保留相關 Git Commit 紀錄，並將修改 Push 至 GitHub。
 
@@ -92,7 +92,7 @@
 
 - `operator`：由 Spring Security 的 `SecurityContext` 取得目前登入的使用者。
 - `action`：記錄 `CREATE`、`UPDATE` 或 `DELETE`。
-- `entityType`：記錄被操作的資料類型別，目前為 `PRODUCT`。
+- `entityType`：記錄被操作的資料類型，目前為 `PRODUCT`。
 - `entityId`：記錄被操作的商品 ID。
 - `beforeData`：保存修改或刪除前的資料。
 - `afterData`：保存新增或修改後的資料。
@@ -132,6 +132,12 @@ GET /api/audit-logs?action=UPDATE
 GET /api/audit-logs?entityType=PRODUCT
 ```
 
+依資料 ID 查詢：
+
+```http
+GET /api/audit-logs?entityId=100
+```
+
 多個條件也可以組合查詢：
 
 ```http
@@ -139,7 +145,11 @@ GET /api/audit-logs?operator=admin&action=DELETE
 ```
 
 ```http
-GET /api/audit-logs?operator=admin&action=CREATE&entityType=PRODUCT
+GET /api/audit-logs?entityType=PRODUCT&entityId=100
+```
+
+```http
+GET /api/audit-logs?operator=admin&action=CREATE&entityType=PRODUCT&entityId=100
 ```
 
 查詢條件使用 Spring Data JPA 的：
@@ -167,7 +177,7 @@ Specification<AuditLog>
 3. 明確記錄操作者，強化責任歸屬。
 4. 方便調查安全事件或人為操作錯誤。
 5. 保留商品修改前後的資料，方便比對差異。
-6. 使用 `Specification` 實作動態查詢，未來容易繼續加入日期、Entity ID、分頁及排序等條件。
+6. 使用 `Specification` 實作動態查詢，未來容易繼續加入日期、分頁及排序等條件。
 
 ---
 
@@ -288,8 +298,9 @@ Linux 或 macOS：
 2. 使用 `PUT /api/products/{id}` 修改商品。
 3. 使用 `DELETE /api/products/{id}` 刪除商品。
 4. 使用 `GET /api/audit-logs` 查詢全部日誌。
-5. 使用 `operator`、`action`、`entityType` 測試單一條件。
+5. 使用 `operator`、`action`、`entityType`、`entityId` 測試單一條件。
 6. 同時輸入多個條件，確認組合查詢結果。
+7. 使用不存在的 `entityId`，確認系統正常回傳空陣列。
 
 單一條件測試：
 
@@ -305,10 +316,26 @@ GET /api/audit-logs?operator=admin
 GET /api/audit-logs?entityType=PRODUCT
 ```
 
+```http
+GET /api/audit-logs?entityId=100
+```
+
+不存在的資料 ID：
+
+```http
+GET /api/audit-logs?entityId=999
+```
+
+預期回傳：
+
+```json
+[]
+```
+
 組合條件測試：
 
 ```http
-GET /api/audit-logs?operator=admin&action=CREATE&entityType=PRODUCT
+GET /api/audit-logs?operator=admin&action=CREATE&entityType=PRODUCT&entityId=100
 ```
 
 上述查詢已透過 Swagger 實際驗證，並成功回傳：
@@ -340,7 +367,6 @@ GET /api/audit-logs?operator=admin&action=CREATE&entityType=PRODUCT
 
 目前 Audit Log 已完成基本記錄及動態條件查詢，後續可以繼續加入：
 
-- 依 `entityId` 查詢。
 - 依日期區間查詢。
 - 查詢結果分頁。
 - 依操作時間倒序排列。

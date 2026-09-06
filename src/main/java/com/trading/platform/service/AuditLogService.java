@@ -43,7 +43,8 @@ public class AuditLogService {
 
     public List<AuditLog> search(String operator,
                                  String action,
-                                 String entityType) {
+                                 String entityType,
+                                 Long entityId) {
 
         Specification<AuditLog> specification =
                 (root, query, criteriaBuilder) -> {
@@ -53,7 +54,9 @@ public class AuditLogService {
                     if (operator != null && !operator.isBlank()) {
                         predicates.add(
                                 criteriaBuilder.equal(
-                                        criteriaBuilder.lower(root.get("operator")),
+                                        criteriaBuilder.lower(
+                                                root.get("operator")
+                                        ),
                                         operator.trim().toLowerCase()
                                 )
                         );
@@ -62,7 +65,9 @@ public class AuditLogService {
                     if (action != null && !action.isBlank()) {
                         predicates.add(
                                 criteriaBuilder.equal(
-                                        criteriaBuilder.upper(root.get("action")),
+                                        criteriaBuilder.upper(
+                                                root.get("action")
+                                        ),
                                         action.trim().toUpperCase()
                                 )
                         );
@@ -71,8 +76,19 @@ public class AuditLogService {
                     if (entityType != null && !entityType.isBlank()) {
                         predicates.add(
                                 criteriaBuilder.equal(
-                                        criteriaBuilder.upper(root.get("entityType")),
+                                        criteriaBuilder.upper(
+                                                root.get("entityType")
+                                        ),
                                         entityType.trim().toUpperCase()
+                                )
+                        );
+                    }
+
+                    if (entityId != null) {
+                        predicates.add(
+                                criteriaBuilder.equal(
+                                        root.get("entityId"),
+                                        entityId
                                 )
                         );
                     }

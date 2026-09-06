@@ -23,12 +23,14 @@ public class AuditLogController {
     public List<AuditLog> search(
             @RequestParam(required = false) String operator,
             @RequestParam(required = false) String action,
-            @RequestParam(required = false) String entityType) {
+            @RequestParam(required = false) String entityType,
+            @RequestParam(required = false) Long entityId) {
 
         return auditLogService.search(
                 operator,
                 action,
-                entityType
+                entityType,
+                entityId
         );
     }
 }
