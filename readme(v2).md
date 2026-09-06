@@ -2,7 +2,7 @@
 
 ## 1. 專案簡介
 
-本專案為 Java Spring Boot 交易平台後端，提供使用者登入、JWT 身分驗證、商品管理、訂單建立、庫存扣減及操作日誌等功能。
+本專案為 Java Spring Boot 交易平台後端，提供使用者登入、JWT 身分驗證、商品管理、商品名稱搜尋、訂單建立、庫存扣減及操作日誌等功能。
 
 ### 主要技術
 
@@ -44,8 +44,10 @@
 20. Audit Log 查詢結果依 `createdAt` 倒序排列，最新操作優先顯示。
 21. 使用獨立資料快照保存完整的 `beforeData`。
 22. 使用 `saveAndFlush()` 確保 `afterData` 記錄更新完成後的樂觀鎖版本。
-23. 完成 Swagger、JWT、商品、訂單、庫存、金額及 Audit Log 的實際測試。
-24. 保留相關 Git Commit 紀錄，並將修改 Push 至 GitHub。
+23. 將商品名稱搜尋的 JPQL 字串拼接改為參數化查詢，降低 JPQL Injection 風險。
+24. 商品名稱搜尋支援模糊比對及英文大小寫不敏感查詢。
+25. 完成 Swagger、JWT、商品搜尋、訂單、庫存、金額及 Audit Log 的實際測試。
+26. 保留相關 Git Commit 紀錄，並將修改 Push 至 GitHub。
 
 ---
 
@@ -217,7 +219,7 @@ Sort.by(Sort.Direction.DESC, "createdAt")
 ORDER BY created_at DESC
 ```
 
-Java 程式使用的是 AuditLog Entity 的屬性名稱：
+Java 程式使用的是 `AuditLog` Entity 的屬性名稱：
 
 ```java
 "createdAt"
@@ -247,9 +249,122 @@ created_at
 
 ---
 
-## 4. 系統啟動方式
+## 4. 商品名稱搜尋安全修正
 
-### 4.1 環境需求
+### 4.1 問題說明
+
+原本的商品名稱搜尋直接將使用者輸入拼接到 JPQL 字串中。
+
+概念上類似：
+
+```java
+String jpql =
+        "SELECT p FROM Product p WHERE p.name LIKE '%"
+        + keyword
+        + "%'";
+```
+
+這種方式會讓使用者輸入直接成為 JPQL 字串的一部分，可能造成 JPQL Injection 風險。
+
+### 4.2 修正方式
+
+目前已改為 JPQL 命名參數：
+
+```java
+public List<Product> searchByName(String keyword) {
+    String jpql = """
+            SELECT p
+            FROM Product p
+            WHERE LOWER(p.name) LIKE LOWER(:keyword)
+            """;
+
+    return entityManager
+            .createQuery(jpql, Product.class)
+            .setParameter("keyword", "%" + keyword.trim() + "%")
+            .getResultList();
+}
+```
+
+查詢結構：
+
+```sql
+SELECT p
+FROM Product p
+WHERE LOWER(p.name) LIKE LOWER(:keyword)
+```
+
+實際搜尋值則透過以下方法傳入：
+
+```java
+setParameter("keyword", value)
+```
+
+例如，當使用者輸入：
+
+```text
+phone
+```
+
+實際參數值為：
+
+```text
+%phone%
+```
+
+JPQL 查詢結構與使用者輸入值會分開處理：
+
+```text
+JPQL：
+SELECT p
+FROM Product p
+WHERE LOWER(p.name) LIKE LOWER(:keyword)
+
+參數：
+keyword = "%phone%"
+```
+
+`:keyword` 是命名參數的預留位置。使用者輸入只會被當作參數值處理，不會直接成為 JPQL 語法的一部分。
+
+### 4.3 搜尋行為
+
+查詢使用：
+
+```sql
+LOWER(p.name) LIKE LOWER(:keyword)
+```
+
+具有以下效果：
+
+* `LIKE` 搭配前後 `%`，支援商品名稱模糊搜尋。
+* `LOWER()` 讓英文搜尋不區分大小寫。
+* 命名參數降低使用者輸入改變 JPQL 結構的風險。
+
+例如，搜尋：
+
+```text
+phone
+```
+
+可以找到：
+
+```text
+iPhone 16
+Phone Case
+```
+
+搜尋：
+
+```text
+PHONE
+```
+
+也可以找到相同商品。
+
+---
+
+## 5. 系統啟動方式
+
+### 5.1 環境需求
 
 啟動前請先安裝：
 
@@ -265,7 +380,7 @@ java -version
 
 應顯示 Java 21。
 
-### 4.2 設定環境變數
+### 5.2 設定環境變數
 
 系統需要以下環境變數：
 
@@ -284,7 +399,7 @@ Run
 → Environment variables
 ```
 
-### 4.3 啟動 PostgreSQL
+### 5.3 啟動 PostgreSQL
 
 在專案根目錄執行：
 
@@ -298,7 +413,7 @@ docker compose up -d
 docker compose ps
 ```
 
-### 4.4 啟動 Spring Boot
+### 5.4 啟動 Spring Boot
 
 Windows：
 
@@ -332,9 +447,9 @@ http://localhost:8080/swagger-ui/index.html
 
 ---
 
-## 5. 測試方式
+## 6. 測試方式
 
-### 5.1 執行自動化測試
+### 6.1 執行自動化測試
 
 Windows：
 
@@ -348,15 +463,16 @@ Linux 或 macOS：
 ./mvnw test
 ```
 
-### 5.2 使用 Swagger 測試
+### 6.2 使用 Swagger 測試
 
 1. 啟動 PostgreSQL。
 2. 啟動 Spring Boot。
 3. 開啟 Swagger UI。
 4. 呼叫登入 API 取得 JWT。
 5. 點擊 Swagger 的 `Authorize`。
-6. 只貼上 JWT 字串並完成授權。
-7. 測試商品、訂單及 Audit Log API。
+6. 貼上 JWT 字串並完成授權。
+7. 確認 Swagger 產生 `Authorization: Bearer ...` Header。
+8. 測試商品、商品搜尋、訂單及 Audit Log API。
 
 Swagger 的 JWT 應產生類似以下 Header：
 
@@ -364,7 +480,9 @@ Swagger 的 JWT 應產生類似以下 Header：
 Authorization: Bearer eyJ...
 ```
 
-### 5.3 Audit Log 測試流程
+測試或公開分享 Swagger 截圖時，應遮蔽完整 JWT，避免洩漏仍在有效期限內的存取憑證。
+
+### 6.3 Audit Log 測試流程
 
 1. 使用 `POST /api/products` 新增商品。
 2. 使用 `PUT /api/products/{id}` 修改商品。
@@ -418,7 +536,7 @@ GET /api/audit-logs?operator=admin&action=CREATE&entityType=PRODUCT&entityId=100
 200 OK
 ```
 
-### 5.4 Audit Log 測試結果
+### 6.4 Audit Log 測試結果
 
 實際測試已確認：
 
@@ -446,9 +564,151 @@ GET /api/audit-logs?operator=admin&action=CREATE&entityType=PRODUCT&entityId=100
 ]
 ```
 
+### 6.5 商品名稱搜尋測試流程
+
+首先建立以下兩筆測試商品。
+
+第一筆商品：
+
+```json
+{
+  "name": "iPhone 16",
+  "price": 30000,
+  "stock": 10
+}
+```
+
+建立成功後回傳：
+
+```json
+{
+  "createdAt": "2026-09-07T02:57:21.3819404",
+  "id": 128,
+  "name": "iPhone 16",
+  "price": 30000,
+  "stock": 10,
+  "version": 0
+}
+```
+
+第二筆商品：
+
+```json
+{
+  "name": "Phone Case",
+  "price": 500,
+  "stock": 20
+}
+```
+
+建立成功後回傳：
+
+```json
+{
+  "createdAt": "2026-09-07T02:59:17.3830003",
+  "id": 129,
+  "name": "Phone Case",
+  "price": 500,
+  "stock": 20,
+  "version": 0
+}
+```
+
+使用小寫關鍵字進行搜尋：
+
+```http
+GET /api/products/search?keyword=phone
+```
+
+API 成功回傳：
+
+```http
+200 OK
+```
+
+搜尋結果包含：
+
+```text
+iPhone 16
+Phone Case
+```
+
+這表示 `%phone%` 模糊搜尋可以找到名稱中包含 `phone` 的商品。
+
+接著使用大寫關鍵字測試：
+
+```http
+GET /api/products/search?keyword=PHONE
+```
+
+API 同樣成功回傳：
+
+```http
+200 OK
+```
+
+搜尋結果仍然包含：
+
+```text
+iPhone 16
+Phone Case
+```
+
+這證明：
+
+```sql
+LOWER(p.name) LIKE LOWER(:keyword)
+```
+
+可以讓英文商品名稱搜尋不區分大小寫。
+
+### 6.6 JPQL 特殊輸入測試
+
+使用以下特殊內容作為搜尋關鍵字：
+
+```text
+' OR '1'='1
+```
+
+執行：
+
+```http
+GET /api/products/search?keyword=' OR '1'='1
+```
+
+API 正常回傳：
+
+```http
+200 OK
+```
+
+回傳內容：
+
+```json
+[]
+```
+
+測試結果顯示：
+
+* 系統沒有將特殊輸入解讀為 JPQL 指令。
+* 系統沒有回傳全部商品。
+* 系統沒有發生 JPQL 語法錯誤。
+* 特殊輸入只被當作商品名稱搜尋值處理。
+* 查無符合商品時正常回傳空陣列。
+
+商品名稱搜尋實際測試結果：
+
+```text
+✅ 商品名稱模糊搜尋正常
+✅ 英文大小寫不敏感查詢正常
+✅ JPQL 命名參數正常套用
+✅ 特殊輸入不會改變 JPQL 查詢結構
+✅ 查無符合商品時正常回傳空陣列
+```
+
 ---
 
-## 6. 後續可改進項目
+## 7. 後續可改進項目
 
 目前 Audit Log 已完成基本記錄、動態條件查詢、Entity ID 查詢及時間倒序排列，後續可以繼續加入：
 
@@ -459,9 +719,18 @@ GET /api/audit-logs?operator=admin&action=CREATE&entityType=PRODUCT&entityId=100
 * 自動遮蔽密碼、JWT 及資料庫憑證等敏感資訊。
 * 為 Audit Log 查詢功能增加自動化測試。
 
+商品搜尋後續可以繼續改進：
+
+* 驗證 `keyword` 不得為 `null` 或空字串。
+* 限制搜尋關鍵字的最大長度。
+* 明確定義 `%` 與 `_` 等萬用字元的處理方式。
+* 為商品搜尋加入分頁及排序。
+* 為大量商品資料建立適當索引並檢查查詢執行計畫。
+* 為商品名稱搜尋增加自動化測試。
+
 ---
 
-## 7. Git History
+## 8. Git History
 
 本專案使用 Git 進行版本控制，完整修改紀錄保留於 GitHub Repository 的 Commit History。
 
@@ -488,3 +757,10 @@ Audit Log `entityId` 查詢相關 Commit：
 ```text
 55b1e7c feat: add entity ID filter to audit log search
 ```
+
+商品名稱 JPQL 參數化查詢相關 Commit：
+
+```text
+fix: parameterize product name JPQL query
+```
+
