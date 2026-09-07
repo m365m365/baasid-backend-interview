@@ -116,15 +116,31 @@ public class ProductService {
     // 已改用參數化查詢，可安全處理使用者輸入
 
     public List<Product> searchByName(String keyword) {
+
+        String escapedKeyword =
+                escapeLikePattern(keyword.trim());
+
         String jpql = """
             SELECT p
             FROM Product p
             WHERE LOWER(p.name) LIKE LOWER(:keyword)
+            ESCAPE '!'
             """;
 
         return entityManager
                 .createQuery(jpql, Product.class)
-                .setParameter("keyword", "%" + keyword.trim() + "%")
+                .setParameter(
+                        "keyword",
+                        "%" + escapedKeyword + "%"
+                )
                 .getResultList();
+    }
+
+    private String escapeLikePattern(String keyword) {
+
+        return keyword
+                .replace("!", "!!")
+                .replace("%", "!%")
+                .replace("_", "!_");
     }
 }

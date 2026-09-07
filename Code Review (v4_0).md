@@ -1,20 +1,20 @@
-# Code Review v3_0
+# Code Review v4.0
 
 ## Review 狀態
 
-- 專案類型：Spring Boot Backend REST API
-- 目前主要技術：Java 21、Spring Boot、Spring Security、JWT、Spring Data JPA、Swagger / OpenAPI、Docker、PostgreSQL
-- Review 版本：Draft v0.2
+* 專案類型：Spring Boot Backend REST API
+* 目前主要技術：Java 21、Spring Boot、Spring Security、JWT、Spring Data JPA、Swagger / OpenAPI、Docker、PostgreSQL
+* Review 版本：v4.0
 
-本報告為目前開發過程的初步 Code Review。
+本報告為目前開發過程的持續性 Code Review，內容已更新至商品搜尋萬用字元安全處理完成。
 
 內容包含：
 
-- 開發過程中實際遇到並修正的問題
-- 已實際測試確認的安全性問題
-- 從目前 API 設計觀察到、後續需要進一步確認的項目
-- 開發環境與 Runtime 問題
-- 目前決定暫時不修改的合理設計取捨
+* 開發過程中實際遇到並修正的問題
+* 已實際測試確認的安全性問題
+* 從目前 API 設計觀察到、後續需要進一步確認的項目
+* 開發環境與 Runtime 問題
+* 目前決定暫時不修改的合理設計取捨
 
 完整版本將在後續通讀整個專案原始碼後，再補上更精確的程式碼位置、實際證據與完整修正結果。
 
@@ -26,9 +26,9 @@
 
 ### 1. 位置
 
-- `src/main/java/com/trading/platform/entity/User.java`
-- Order API Response
-- `GET /api/orders`
+* `src/main/java/com/trading/platform/entity/User.java`
+* Order API Response
+* `GET /api/orders`
 
 ### 2. 問題描述
 
@@ -59,10 +59,10 @@ API 不應回傳使用者密碼。
 
 可能造成：
 
-- 使用者敏感資訊洩漏
-- Password hash 洩漏
-- 增加帳號遭受攻擊的風險
-- Entity 新增敏感欄位時可能再次意外暴露
+* 使用者敏感資訊洩漏
+* Password hash 洩漏
+* 增加帳號遭受攻擊的風險
+* Entity 新增敏感欄位時可能再次意外暴露
 
 **嚴重程度：🔴 嚴重**
 
@@ -101,8 +101,8 @@ fix: hide user password from API response
 
 ### 1. 位置
 
-- `ProductRepository.java`
-- `Product.java`
+* `ProductRepository.java`
+* `Product.java`
 
 ### 2. 問題描述
 
@@ -154,8 +154,8 @@ ApplicationContext 啟動失敗
 
 ### 1. 位置
 
-- `security/JwtAuthenticationFilter.java`
-- `config/SecurityConfig.java`
+* `security/JwtAuthenticationFilter.java`
+* `config/SecurityConfig.java`
 
 ### 2. 問題描述
 
@@ -213,8 +213,8 @@ Spring Boot 無法啟動
 
 ### 1. 位置
 
-- `service/AuthService.java`
-- `security/JwtUtil.java`
+* `service/AuthService.java`
+* `security/JwtUtil.java`
 
 ### 2. 問題描述
 
@@ -256,10 +256,10 @@ Maven Build Failure
 
 目前 JWT 可以同時包含：
 
-- username
-- role
-- issuedAt
-- expiration
+* username
+* role
+* issuedAt
+* expiration
 
 登入後可以正常產生 JWT。
 
@@ -273,8 +273,8 @@ Maven Build Failure
 
 ### 1. 位置
 
-- `ProductService.java`
-- `ProductRequest.java`
+* `ProductService.java`
+* `ProductRequest.java`
 
 ### 2. 問題描述
 
@@ -332,10 +332,10 @@ Spring Boot 無法執行
 
 ### 1. 位置
 
-- `User.java`
-- `AuthService.java`
-- `data.sql`
-- `SecurityConfig.java`
+* `User.java`
+* `AuthService.java`
+* `data.sql`
+* `SecurityConfig.java`
 
 ### 2. 問題描述
 
@@ -383,12 +383,12 @@ passwordEncoder.matches(...)
 
 目前：
 
-- Database 中使用者密碼已改成 BCrypt hash
-- `data.sql` 已改為 BCrypt hash
-- `SecurityConfig` 已提供 `PasswordEncoder`
-- `AuthService` 已改用 `PasswordEncoder.matches()`
-- Swagger 已實際測試登入
-- 正確帳號密碼可成功取得 JWT
+* Database 中使用者密碼已改成 BCrypt hash
+* `data.sql` 已改為 BCrypt hash
+* `SecurityConfig` 已提供 `PasswordEncoder`
+* `AuthService` 已改用 `PasswordEncoder.matches()`
+* Swagger 已實際測試登入
+* 正確帳號密碼可成功取得 JWT
 
 ### 5. 已提交
 
@@ -402,9 +402,9 @@ fix: secure passwords with BCrypt
 
 ### 1. 位置
 
-- `security/JwtUtil.java`
-- `src/main/resources/application.yml`
-- IntelliJ Run Configuration
+* `security/JwtUtil.java`
+* `src/main/resources/application.yml`
+* IntelliJ Run Configuration
 
 ### 2. 問題描述
 
@@ -423,10 +423,10 @@ JWT Secret 是 JWT Signature 的核心敏感資訊。
 
 不應直接存在：
 
-- Java Source Code
-- `application.yml` 明文
-- Git Repository
-- 公開 fallback value
+* Java Source Code
+* `application.yml` 明文
+* Git Repository
+* 公開 fallback value
 
 如果 JWT Secret 洩漏，可能破壞 JWT Token 的可信任基礎。
 
@@ -460,8 +460,8 @@ fix: externalize JWT and database secrets
 
 ### 1. 位置
 
-- `src/main/resources/application.yml`
-- IntelliJ Run Configuration
+* `src/main/resources/application.yml`
+* IntelliJ Run Configuration
 
 ### 2. 問題描述
 
@@ -484,9 +484,9 @@ Database Password 屬於敏感憑證。
 
 可能後果：
 
-- Repository 外洩時 Database Credential 一起外洩
-- 其他取得 Repository 的人員可以看到密碼
-- Production 若沿用相同方式，安全風險更高
+* Repository 外洩時 Database Credential 一起外洩
+* 其他取得 Repository 的人員可以看到密碼
+* Production 若沿用相同方式，安全風險更高
 
 **嚴重程度：🔴 嚴重**
 
@@ -538,16 +538,17 @@ fix: externalize JWT and database secrets
 
 ---
 
+
 # 二、🟡 中等問題
 
 ## CR-009 — API 直接回傳 JPA Entity
 
 ### 1. 位置
 
-- `Order.java`
-- `OrderController.java`
-- `OrderService.java`
-- `OrderResponse.java`
+* `Order.java`
+* `OrderController.java`
+* `OrderService.java`
+* `OrderResponse.java`
 
 ### 2. 問題描述
 
@@ -589,11 +590,11 @@ API Response 則屬於對外提供的 API Contract。
 
 兩者直接綁定可能造成：
 
-- Entity 欄位意外暴露
-- API Response 與 Database Model 高度耦合
-- Entity 修改時 API Contract 被動改變
-- 關聯 Entity 可能被一起序列化
-- 後續 API 版本維護較困難
+* Entity 欄位意外暴露
+* API Response 與 Database Model 高度耦合
+* Entity 修改時 API Contract 被動改變
+* 關聯 Entity 可能被一起序列化
+* 後續 API 版本維護較困難
 
 因此建立 `OrderResponse DTO`，只選擇允許 Client 取得的欄位。
 
@@ -702,24 +703,21 @@ stock
 
 因此 API 已不再直接將完整 `Order Entity` 作為 Response 回傳。
 
-
-
 ### 5. 已提交
-
-
 
 ```text
 refactor: use OrderResponse DTO for order APIs
 ```
 
 ---
+
 ## CR-010 — Order Quantity 輸入驗證不足
 
 ### 1. 位置
 
-- `OrderRequest.java`
-- `OrderController.java`
-- `SecurityConfig.java`
+* `OrderRequest.java`
+* `OrderController.java`
+* `SecurityConfig.java`
 
 ### 2. 問題描述
 
@@ -775,13 +773,13 @@ Order Quantity 應只能接受大於 0 的整數。
 
 如果沒有輸入驗證，可能造成：
 
-- `quantity = 0`
-- `quantity < 0`
-- `productId = null`
-- 建立非法訂單
-- 產生負數訂單金額
-- 庫存數量異常增加
-- Business Data 不一致
+* `quantity = 0`
+* `quantity < 0`
+* `productId = null`
+* 建立非法訂單
+* 產生負數訂單金額
+* 庫存數量異常增加
+* Business Data 不一致
 
 因此在 `OrderRequest` 加入 Bean Validation：
 
@@ -871,15 +869,13 @@ rejected value [-98]
 
 ### 5. 已提交
 
-
-
 ```text
 fix: validate order request quantity
 ```
 
 ---
 
-## ## CR-011 — 訂單建立與庫存扣減 Transaction 需要確認
+## CR-011 — 訂單建立與庫存扣減 Transaction 需要確認
 
 ### 1. 位置
 
@@ -1118,13 +1114,12 @@ version = 1
 目前訂單建立與庫存扣減已位於相同 Transaction Boundary，並使用 `@Version` 樂觀鎖防止並發更新造成庫存資料遺失。
 
 後續可再增加自動化並發測試，驗證兩個 Request 同時購買最後一件商品時，只允許其中一筆訂單成功。
+
 ```text
 fix: ensure atomic order creation and stock deduction
 ```
 
-
 ---
-
 
 ## CR-012 — 金額資料型別需要確認
 
@@ -1247,7 +1242,9 @@ ALTER TABLE orders
 ALTER COLUMN total_price TYPE NUMERIC(19, 2)
 USING total_price::NUMERIC(19, 2);
 ```
+
 **嚴重程度：🟡 中等**
+
 ### 4. 狀態
 
 ✅ **已修正並通過基本功能測試**
@@ -1300,7 +1297,6 @@ fix: use BigDecimal for monetary values
 
 ---
 
-
 ## CR-013 — Port 8080 衝突造成啟動失敗
 
 ### 1. 位置
@@ -1343,16 +1339,15 @@ netstat -ano | findstr :8080
 
 目前 Spring Boot 已可正常使用 Port 8080 啟動。
 
-
-
 ### 5. 已提交
 
 本項屬於執行環境問題，未修改程式碼，因此無須建立獨立 Commit。
 
 ```text
 No code change required
-
 ```
+
+---
 
 ## CR-014 — Java / JAVA_HOME 環境設定造成 Maven 無法正常執行
 
@@ -1366,10 +1361,10 @@ Development Environment Issue
 
 使用環境：
 
-- Windows 11
-- IntelliJ IDEA
-- Maven Wrapper
-- Java 21
+* Windows 11
+* IntelliJ IDEA
+* Maven Wrapper
+* Java 21
 
 ### 2. 問題描述
 
@@ -1431,6 +1426,8 @@ echo $env:JAVA_HOME
 No code change required
 ```
 
+---
+
 ## CR-015 — Docker / PostgreSQL 執行環境問題
 
 ### 1. 位置
@@ -1443,9 +1440,9 @@ Development Environment Issue
 
 相關：
 
-- Docker Desktop
-- `docker-compose.yml`
-- PostgreSQL
+* Docker Desktop
+* `docker-compose.yml`
+* PostgreSQL
 
 ### 2. 問題描述
 
@@ -1495,6 +1492,7 @@ Spring Boot 目前可成功連線 PostgreSQL。
 ```text
 No code change required
 ```
+
 ---
 
 # 三、🟢 輕微／程式品質改善
@@ -1503,8 +1501,8 @@ No code change required
 
 ### 1. 位置
 
-- Swagger / OpenAPI Configuration
-- Controller API Documentation
+* Swagger / OpenAPI Configuration
+* Controller API Documentation
 
 ### 2. 問題描述
 
@@ -1530,10 +1528,10 @@ Swagger JWT Authentication 流程已可以正常運作。
 
 目前主要影響的是：
 
-- API 可讀性
-- 開發者使用體驗
-- API Error Response 說明
-- 面試官理解 API 的速度
+* API 可讀性
+* 開發者使用體驗
+* API Error Response 說明
+* 面試官理解 API 的速度
 
 未來可加入：
 
@@ -1572,10 +1570,10 @@ Swagger JWT Authentication 流程已可以正常運作。
 
 已完成 Review：
 
-- `config/SecurityConfig.java`
-- `repository/UserRepository.java`
-- `entity/User.java`
-- Spring Security Startup Log
+* `config/SecurityConfig.java`
+* `repository/UserRepository.java`
+* `entity/User.java`
+* Spring Security Startup Log
 
 ### 2. 問題描述
 
@@ -1606,8 +1604,7 @@ Global AuthenticationManager configured with
 UserDetailsService bean with name inMemoryUserDetailsManager
 ```
 
-代表 Spring Security 沒有找到專案自訂的 `UserDetailsService`，
-因此仍然自動建立預設的：
+代表 Spring Security 沒有找到專案自訂的 `UserDetailsService`，因此仍然自動建立預設的：
 
 ```text
 InMemoryUserDetailsManager
@@ -1641,11 +1638,11 @@ UserRepository
 
 如果保留預設 `InMemoryUserDetailsManager`，可能造成：
 
-- Authentication 架構不清楚
-- 開發者誤以為 generated password 是正式登入密碼
-- JWT Authentication 與 Spring Security Default Authentication 並存
-- Production Configuration 容易產生誤解
-- Security 設定與實際 Database User Model 不一致
+* Authentication 架構不清楚
+* 開發者誤以為 generated password 是正式登入密碼
+* JWT Authentication 與 Spring Security Default Authentication 並存
+* Production Configuration 容易產生誤解
+* Security 設定與實際 Database User Model 不一致
 
 因此應明確提供專案自己的 `UserDetailsService`。
 
@@ -1769,8 +1766,7 @@ Protected API
 
 ✅ **已修正並通過 Swagger Login / JWT 驗證**
 
-目前 Spring Security 已使用專案自己的 Database User Model，
-不再依賴 Spring Boot 自動產生的 Development User Password。
+目前 Spring Security 已使用專案自己的 Database User Model，不再依賴 Spring Boot 自動產生的 Development User Password。
 
 ### 7. 建議 Git Commit
 
@@ -1786,10 +1782,10 @@ fix: configure database-backed UserDetailsService
 
 已完成 Review：
 
-- `src/main/resources/data.sql`
-- `src/main/resources/schema.sql`
-- `entity/User.java`
-- PostgreSQL `users` table
+* `src/main/resources/data.sql`
+* `src/main/resources/schema.sql`
+* `entity/User.java`
+* PostgreSQL `users` table
 
 ### 2. 問題描述
 
@@ -1801,8 +1797,7 @@ VALUES (...)
 ON CONFLICT DO NOTHING;
 ```
 
-原本預期 Spring Boot 每次啟動時，即使再次執行 `data.sql`，
-也不會重複建立相同使用者。
+原本預期 Spring Boot 每次啟動時，即使再次執行 `data.sql`，也不會重複建立相同使用者。
 
 但實際查詢 Database：
 
@@ -1913,13 +1908,13 @@ alice
 
 同時存在，可能造成：
 
-- `findByUsername()` 查詢結果不唯一
-- Login Authentication 行為不確定
-- Spring Data JPA 可能發生 NonUniqueResultException
-- 同一 Username 對應多個 User ID
-- Order 與 User 關聯可能產生資料一致性問題
-- `ON CONFLICT DO NOTHING` 無法發揮原本預期效果
-- Spring Boot 每次啟動都可能增加重複測試資料
+* `findByUsername()` 查詢結果不唯一
+* Login Authentication 行為不確定
+* Spring Data JPA 可能發生 `NonUniqueResultException`
+* 同一 Username 對應多個 User ID
+* Order 與 User 關聯可能產生資料一致性問題
+* `ON CONFLICT DO NOTHING` 無法發揮原本預期效果
+* Spring Boot 每次啟動都可能增加重複測試資料
 
 **嚴重程度：🟡 中等**
 
@@ -1948,8 +1943,7 @@ alice
 
 #### 5.2 清除既有重複資料
 
-在確認需要保留的 User Record 後，
-刪除多餘的重複測試資料。
+在確認需要保留的 User Record 後，刪除多餘的重複測試資料。
 
 再次執行：
 
@@ -1995,8 +1989,7 @@ username UNIQUE
 
 #### 5.4 schema.sql 同步修改
 
-除了修改目前本機 Database，
-也應將 Constraint 寫回版本控制中的：
+除了修改目前本機 Database，也應將 Constraint 寫回版本控制中的：
 
 ```text
 schema.sql
@@ -2133,28 +2126,225 @@ HAVING COUNT(*) > 1;
 
 確認：
 
-- 重複 Username 已清除
-- Database UNIQUE Constraint 已建立
-- `ON CONFLICT DO NOTHING` 現在具有實際作用
-- 後續 Spring Boot 重啟不應再建立相同 Username
-- Authentication User Data 唯一性已由 Database 保護
+* 重複 Username 已清除
+* Database UNIQUE Constraint 已建立
+* `ON CONFLICT DO NOTHING` 現在具有實際作用
+* 後續 Spring Boot 重啟不應再建立相同 Username
+* Authentication User Data 唯一性已由 Database 保護
 
 ### 8. 狀態
 
 ✅ **已修正並完成 Database 驗證**
 
-目前 `users.username` 已具有 Database UNIQUE Constraint，
-`data.sql` 的 `ON CONFLICT DO NOTHING` 可以正確防止測試帳號重複初始化。
+目前 `users.username` 已具有 Database UNIQUE Constraint，`data.sql` 的 `ON CONFLICT DO NOTHING` 可以正確防止測試帳號重複初始化。
 
-### 9. s Git Commit
-
-
+### 9. Git Commit
 
 ```text
 fix: harden user authentication and seed data
 ```
 
+---
+## CR-019 — Audit Log 查詢權限與 Response DTO
 
+### 1. 位置
+
+* `config/SecurityConfig.java`
+* `controller/AuditLogController.java`
+* `service/AuditLogService.java`
+* `dto/AuditLogResponse.java`
+
+### 2. 問題描述
+
+操作日誌包含操作者、操作類型、資料異動前後內容等敏感資訊，不應開放一般使用者查詢；Controller 也不應直接回傳 JPA Entity。
+
+### 3. 修正內容
+
+* `GET /api/audit-logs` 限制為 `ADMIN`。
+* Service 查詢結果以 `AuditLogResponse::from` 轉換為 DTO。
+* 支援依 `operator`、`action`、`entityType`、`entityId` 動態篩選。
+* 查詢結果依 `createdAt` 由新到舊排序。
+
+```java
+return auditLogRepository.findAll(specification, sort)
+        .stream()
+        .map(AuditLogResponse::from)
+        .toList();
+```
+
+### 4. 驗證結果
+
+* ADMIN 查詢 Audit Log：`200 OK`
+* 查詢結果成功輸出 DTO JSON
+* DELETE 商品後，可依 `action=DELETE` 與 `entityId` 找到對應紀錄
+
+### 5. 狀態
+
+✅ **已修正並測試**
+
+---
+
+## CR-020 — 商品搜尋參數缺少輸入驗證
+
+### 1. 位置
+
+* `controller/ProductController.java`
+
+### 2. 問題描述
+
+商品搜尋的 `keyword` 原本可接受空白或過長內容，可能造成無意義查詢、過大的查詢條件及不一致的 API 行為。
+
+### 3. 修正內容
+
+```java
+@GetMapping("/search")
+public List<Product> search(
+        @RequestParam
+        @NotBlank(message = "keyword must not be blank")
+        @Size(max = 100, message = "keyword must not exceed 100 characters")
+        String keyword
+) {
+    return productService.searchByName(keyword);
+}
+```
+
+本專案使用 Spring Boot 4 / Spring Framework 7 的 MVC Method Validation，因此不另外在 Controller 類別加入 `@Validated`，避免驗證例外被當成未處理錯誤而回傳 `500`。
+
+### 4. 驗證結果
+
+| 測試內容       | 預期結果  | 實際結果                |
+| ---------- | ----- | ------------------- |
+| 正常 keyword | `200` | ✅ `200`             |
+| 空白 keyword | `400` | ✅ `400`             |
+| 超過 100 字元  | 驗證失敗  | ✅ Swagger 阻擋／API 驗證 |
+
+### 5. 狀態
+
+✅ **已修正並測試**
+
+---
+
+## CR-021 — 商品刪除使用不安全的 HTTP Method
+
+### 1. 位置
+
+* `controller/ProductController.java`
+* `config/SecurityConfig.java`
+
+### 2. 問題描述
+
+原本刪除商品使用：
+
+```java
+@GetMapping("/delete/{id}")
+```
+
+但 `SecurityConfig` 的 ADMIN 規則是依照 HTTP `DELETE` Method 保護 `/api/products/**`。
+
+舊 API 使用 `GET`，因此可能繞過原本預期的刪除權限規則，而且 GET 本身也不應改變伺服器資料。
+
+### 3. 修正內容
+
+```java
+@DeleteMapping("/{id}")
+```
+
+刪除 API 改為：
+
+```http
+DELETE /api/products/{id}
+```
+
+### 4. 驗證結果
+
+| 身分    | 操作             | 結果                      |
+| ----- | -------------- | ----------------------- |
+| USER  | 刪除商品           | ✅ `403 Forbidden`       |
+| ADMIN | 刪除商品           | ✅ `200 OK`，回傳 `deleted` |
+| ADMIN | 查詢刪除 Audit Log | ✅ 找到 DELETE 紀錄          |
+
+### 5. 狀態
+
+✅ **已修正並完成權限測試**
+
+---
+
+## CR-022 — 商品搜尋未跳脫 LIKE 萬用字元
+
+### 1. 位置
+
+* `service/ProductService.java`
+
+### 2. 問題描述
+
+JPQL／SQL 的 `LIKE` 條件中：
+
+| 字元  | LIKE 中的意義 |
+| --- | --------- |
+| `%` | 任意長度的任意字元 |
+| `_` | 任意一個字元    |
+
+若直接把使用者輸入組成 `%keyword%`，輸入 `%` 會形成類似 `%%%` 的搜尋條件，導致全部商品被查出。
+
+這不是 SQL Injection，因為查詢仍使用參數綁定，但屬於搜尋語意與資料暴露範圍問題。
+
+### 3. 修正內容
+
+使用 `!` 作為 LIKE Escape Character，先處理跳脫字元本身，再處理 `%` 與 `_`：
+
+```java
+public List<Product> searchByName(String keyword) {
+    String escapedKeyword = escapeLikePattern(keyword.trim());
+
+    String jpql = """
+            SELECT p
+            FROM Product p
+            WHERE LOWER(p.name) LIKE LOWER(:keyword)
+            ESCAPE '!'
+            """;
+
+    return entityManager
+            .createQuery(jpql, Product.class)
+            .setParameter("keyword", "%" + escapedKeyword + "%")
+            .getResultList();
+}
+
+private String escapeLikePattern(String keyword) {
+    return keyword
+            .replace("!", "!!")
+            .replace("%", "!%")
+            .replace("_", "!_");
+}
+```
+
+跳脫規則如下：
+
+| 使用者輸入 | 傳入 LIKE 的內容 | 搜尋意義       |
+| ----- | ----------- | ---------- |
+| `%`   | `!%`        | 搜尋字面上的 `%` |
+| `_`   | `!_`        | 搜尋字面上的 `_` |
+| `!`   | `!!`        | 搜尋字面上的 `!` |
+
+### 4. 驗證結果
+
+| keyword | 結果                            |
+| ------- | ----------------------------- |
+| `phone` | ✅ 找到 `iPhone 16`、`Phone Case` |
+| `%`     | ✅ `200 OK`，回傳 `[]`，不再查出全部商品   |
+| `_`     | ✅ `200 OK`，回傳 `[]`            |
+| `!`     | ✅ `200 OK`，回傳 `[]`            |
+
+正常的模糊搜尋功能仍保留，特殊字元則改為依字面值搜尋。
+
+### 5. 狀態
+
+✅ **已修正並完成 Swagger 測試**
+
+### 6. 建議 Git Commit
+
+```text
+fix: escape wildcard characters in product search
+```
 
 ---
 
@@ -2193,11 +2383,11 @@ JSON
 
 但是目前 `@JsonIgnore`：
 
-- 修改範圍小
-- 已實際解決 Password 洩漏
-- 不影響目前 JWT Login
-- 不需要大規模修改 Controller / Service
-- 適合作為目前階段的安全修補
+* 修改範圍小
+* 已實際解決 Password 洩漏
+* 不影響目前 JWT Login
+* 不需要大規模修改 Controller / Service
+* 適合作為目前階段的安全修補
 
 ### 4. 決定
 
@@ -2335,6 +2525,14 @@ quantity
 ↓
 ✅ 庫存與 Version 更新驗證成功
 ↓
+✅ Audit Log 限制 ADMIN 查詢並改用 Response DTO
+↓
+✅ 商品搜尋加入空白與長度驗證
+↓
+✅ 商品刪除改用 DELETE 並完成 USER / ADMIN 權限測試
+↓
+✅ LIKE 的 %、_、! 萬用字元完成安全跳脫
+↓
 ✅ Git Commit + Push
 ```
 
@@ -2381,20 +2579,24 @@ Authentication / Authorization 可以運作
 
 ## 6.2 已完成 P2 問題
 
-| 優先級   | Code Review | 項目                  | 狀態       |
-| ----- | ----------- | ------------------- | -------- |
-| 🟡 P2 | CR-009      | Order Response DTO  | ✅ 已修正    |
-| 🟡 P2 | CR-010      | Quantity Validation | ✅ 已修正並測試 |
-| 🟡 P2 | CR-011      | Transaction / 庫存一致性 | ✅ 已修正並測試 |
-| 🟡 P2 | CR-012      | Money / BigDecimal  | ✅ 已修正並測試 |
+| 優先級   | Code Review | 項目                         | 狀態       |
+| ----- | ----------- | -------------------------- | -------- |
+| 🟡 P2 | CR-009      | Order Response DTO         | ✅ 已修正    |
+| 🟡 P2 | CR-010      | Quantity Validation        | ✅ 已修正並測試 |
+| 🟡 P2 | CR-011      | Transaction／庫存一致性          | ✅ 已修正並測試 |
+| 🟡 P2 | CR-012      | Money／BigDecimal           | ✅ 已修正並測試 |
+| 🟡 P2 | CR-019      | Audit Log 權限與 Response DTO | ✅ 已修正並測試 |
+| 🟡 P2 | CR-020      | Product Search Validation  | ✅ 已修正並測試 |
+| 🟡 P2 | CR-021      | Delete Endpoint Method 與權限 | ✅ 已修正並測試 |
+| 🟡 P2 | CR-022      | LIKE 萬用字元安全處理              | ✅ 已修正並測試 |
 
 ## 6.3 已處理環境問題
 
-| 分類          | Code Review | 項目                       | 狀態    |
-| ----------- | ----------- | ------------------------ | ----- |
-| Environment | CR-013      | Port 8080 衝突             | ✅ 已處理 |
-| Environment | CR-014      | Java / JAVA_HOME 設定      | ✅ 已處理 |
-| Environment | CR-015      | Docker / PostgreSQL 執行環境 | ✅ 已處理 |
+| 分類          | Code Review | 項目                     | 狀態    |
+| ----------- | ----------- | ---------------------- | ----- |
+| Environment | CR-013      | Port 8080 衝突           | ✅ 已處理 |
+| Environment | CR-014      | Java／JAVA_HOME 設定      | ✅ 已處理 |
+| Environment | CR-015      | Docker／PostgreSQL 執行環境 | ✅ 已處理 |
 
 CR-013～CR-015 屬於本機開發環境與執行環境問題，不是 Business Logic 缺陷，因此不需要修改核心 Java 程式碼。
 
@@ -2408,7 +2610,6 @@ CR-013～CR-015 屬於本機開發環境與執行環境問題，不是 Business 
 | 🟡 P2 | 待編號         | Global Exception Handling  | ⚠️ 待 Review |
 | 🟡 P2 | 待編號         | HTTP Status Code 設計        | ⚠️ 待 Review |
 | 🟡 P2 | 待編號         | ProductService Optional 處理 | ⚠️ 待 Review |
-| 🟡 P2 | 待編號         | JPQL Query Injection 風險    | ⚠️ 待 Review |
 | 🟢 P3 | 待編號         | 測試資料重複初始化                  | ⚠️ 待 Review |
 | 🟢 P3 | 待編號         | 自動化測試補強                    | ⚠️ 待 Review |
 
@@ -2424,8 +2625,6 @@ HTTP Status Code
 ↓
 ProductService Optional 處理
 ↓
-JPQL 參數化查詢
-↓
 data.sql 重複初始化
 ↓
 Automated Tests
@@ -2433,9 +2632,9 @@ Automated Tests
 
 ---
 
-# 八、Code Review v3.0 結論
+# 八、Code Review v4.0 結論
 
-目前已完成三個主要階段：
+目前已完成四個主要階段：
 
 ```text
 第一階段
@@ -2446,15 +2645,18 @@ Security / Authentication / Credential Protection
 ↓
 第三階段
 Validation / Transaction / Data Consistency / Money Precision
+↓
+第四階段
+Audit Log / Endpoint Authorization / Search Safety
 ```
 
 已完成的主要修正包括：
 
 1. 修正 API 暴露 Password
-2. 修正 Repository / Entity 不一致造成的啟動問題
+2. 修正 Repository／Entity 不一致造成的啟動問題
 3. 修正 `JwtAuthenticationFilter` Bean 問題
 4. 修正 JWT Method Signature 編譯問題
-5. 修正 DTO / Service Accessor 編譯問題
+5. 修正 DTO／Service Accessor 編譯問題
 6. 使用 BCrypt 儲存使用者密碼
 7. 將 JWT Secret 改為環境變數
 8. 將 Database Password 改為環境變數
@@ -2466,6 +2668,11 @@ Validation / Transaction / Data Consistency / Money Precision
 14. 將 PostgreSQL 金額欄位改為 `NUMERIC(19,2)`
 15. 完成 Swagger、JWT、訂單、庫存及金額實際測試
 16. 完成相關 Git Commit 並 Push 至 GitHub
+17. 限制 Audit Log 僅供 ADMIN 查詢並使用 Response DTO
+18. 驗證商品搜尋 keyword 不可空白且最長 100 字元
+19. 將商品刪除 API 改為 `DELETE /api/products/{id}`
+20. 驗證 USER 刪除回傳 `403`、ADMIN 刪除成功
+21. 跳脫商品搜尋中的 `%`、`_` 與 `!` 字元
 
 目前核心流程已能正常運作：
 
@@ -2513,13 +2720,15 @@ Repository / Query 安全性
 
 ---
 
-> **目前文件狀態：Code Review v3.0**
+> **目前文件狀態：Code Review v4.0**
 >
-> 本文件已完成 P1 Security / Startup 問題，以及主要 P2 Business Logic / Data Consistency 問題的修正與驗證。
+> 本文件已完成 P1 Security／Startup 問題，以及主要 P2 Business Logic／Data Consistency 問題的修正與驗證。
 >
 > CR-009～CR-012 已由「待確認」更新為「已修正並測試」。
 >
-> CR-013～CR-015 已確認為 Development Environment / Runtime Issue，不需要修改核心 Business Logic。
+> CR-013～CR-015 已確認為 Development Environment／Runtime Issue，不需要修改核心 Business Logic。
+>
+> CR-019～CR-022 已完成 Audit Log 權限、Response DTO、商品搜尋驗證、刪除 API 權限與 LIKE 萬用字元安全處理。
 >
 > 後續將繼續通讀完整專案原始碼，針對所有剩餘項目補充：
 >
@@ -2527,7 +2736,7 @@ Repository / Query 安全性
 > 2. 實際問題程式碼
 > 3. 問題發生原因
 > 4. 實際修正方式
-> 5. Swagger / Runtime 測試結果
+> 5. Swagger／Runtime 測試結果
 > 6. Git Commit 紀錄
 >
-> 下一階段將由 CR-016 Swagger Documentation 開始，並繼續整理後續 Code Review 項目。
+> 下一階段將由 CR-016 Swagger Documentation 開始，並繼續整理 Global Exception Handling、HTTP Status Code 與 Automated Tests。
