@@ -1,5 +1,6 @@
 package com.trading.platform.service;
 
+import com.trading.platform.dto.AuditLogResponse;
 import com.trading.platform.entity.AuditLog;
 import com.trading.platform.repository.AuditLogRepository;
 import jakarta.persistence.criteria.Predicate;
@@ -17,18 +18,22 @@ public class AuditLogService {
     private final AuditLogRepository auditLogRepository;
     private final JsonMapper jsonMapper;
 
-    public AuditLogService(AuditLogRepository auditLogRepository,
-                           JsonMapper jsonMapper) {
+    public AuditLogService(
+            AuditLogRepository auditLogRepository,
+            JsonMapper jsonMapper
+    ) {
         this.auditLogRepository = auditLogRepository;
         this.jsonMapper = jsonMapper;
     }
 
-    public void log(String operator,
-                    String action,
-                    String entityType,
-                    Long entityId,
-                    Object beforeData,
-                    Object afterData) {
+    public void log(
+            String operator,
+            String action,
+            String entityType,
+            Long entityId,
+            Object beforeData,
+            Object afterData
+    ) {
 
         AuditLog auditLog = new AuditLog();
 
@@ -42,10 +47,12 @@ public class AuditLogService {
         auditLogRepository.save(auditLog);
     }
 
-    public List<AuditLog> search(String operator,
-                                 String action,
-                                 String entityType,
-                                 Long entityId) {
+    public List<AuditLogResponse> search(
+            String operator,
+            String action,
+            String entityType,
+            Long entityId
+    ) {
 
         Specification<AuditLog> specification =
                 (root, query, criteriaBuilder) -> {
@@ -100,9 +107,12 @@ public class AuditLogService {
                 };
 
         return auditLogRepository.findAll(
-                specification,
-                Sort.by(Sort.Direction.DESC, "createdAt")
-        );
+                        specification,
+                        Sort.by(Sort.Direction.DESC, "createdAt")
+                )
+                .stream()
+                .map(AuditLogResponse::from)
+                .toList();
     }
 
     private String toJson(Object data) {
@@ -115,7 +125,8 @@ public class AuditLogService {
             return jsonMapper.writeValueAsString(data);
         } catch (Exception e) {
             throw new RuntimeException(
-                    "Failed to convert audit data to JSON", e
+                    "Failed to convert audit data to JSON",
+                    e
             );
         }
     }

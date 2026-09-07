@@ -1,6 +1,6 @@
 package com.trading.platform.controller;
 
-import com.trading.platform.entity.AuditLog;
+import com.trading.platform.dto.AuditLogResponse;
 import com.trading.platform.service.AuditLogService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,11 +20,12 @@ public class AuditLogController {
     }
 
     @GetMapping
-    public List<AuditLog> search(
+    public List<AuditLogResponse> search(
             @RequestParam(required = false) String operator,
             @RequestParam(required = false) String action,
             @RequestParam(required = false) String entityType,
-            @RequestParam(required = false) Long entityId) {
+            @RequestParam(required = false) Long entityId
+    ) {
 
         return auditLogService.search(
                 operator,
