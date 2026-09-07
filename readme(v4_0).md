@@ -1,5 +1,6 @@
-# Baasid Backend Interview — README（v3.3）
-
+# Baasid Backend Interview — README（v4.0）
+## 作者 : 陳茂興
+## 時間 : 2026.09.08
 ## 1. 專案簡介
 
 本專案為 Java Spring Boot 交易平台後端，提供以下功能：

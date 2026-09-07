@@ -1,5 +1,7 @@
 # Code Review v4.0
 
+## 作者 : 陳茂興
+## 時間 : 2026.09.08
 ## Review 狀態
 
 * 專案類型：Spring Boot Backend REST API
