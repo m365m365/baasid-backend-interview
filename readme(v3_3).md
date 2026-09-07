@@ -1,4 +1,4 @@
-# Baasid Backend Interview — README（v3.2）
+# Baasid Backend Interview — README（v3.3）
 
 ## 1. 專案簡介
 
@@ -58,8 +58,12 @@
 25. 限制只有 `ADMIN` 可以查詢 Audit Log。
 26. 新增 `AuditLogResponse` DTO，避免 Audit Log API 直接回傳 Entity。
 27. 在 Service 層將 `List<AuditLog>` 轉換為 `List<AuditLogResponse>`。
-28. 完成 Swagger、JWT、角色權限、DTO、商品搜尋、訂單、庫存及 Audit Log 測試。
-29. 保留相關 Git Commit 紀錄並推送至 GitHub。
+28. 為商品搜尋的 `keyword` 加入 `@NotBlank` 與 `@Size(max = 100)` 輸入驗證。
+29. 修正 Controller 使用 `@Validated` 時驗證失敗回傳 `500` 的問題，改由 Spring MVC 內建方法參數驗證回傳 `400 Bad Request`。
+30. 將不安全的 `GET /api/products/delete/{id}` 改為 `DELETE /api/products/{id}`。
+31. 確認商品刪除 API 正確套用 ADMIN 權限限制。
+32. 完成 Swagger、JWT、角色權限、DTO、商品搜尋、訂單、庫存及 Audit Log 測試。
+33. 保留相關 Git Commit 紀錄並推送至 GitHub。
 
 ---
 
@@ -291,7 +295,7 @@ ROLE_ADMIN
 .hasRole("ADMIN")
 ```
 
-一般使用者雖然已經登入，但只有：
+一般使用者雖然已登入，但只有：
 
 ```text
 ROLE_USER
@@ -649,6 +653,177 @@ GET /api/products/search?keyword=' OR '1'='1
 ✅ 查無符合商品時正常回傳空陣列
 ```
 
+### 8.5 商品搜尋輸入驗證
+
+商品搜尋的 `keyword` 加入以下驗證：
+
+```java
+@GetMapping("/search")
+public List<Product> search(
+        @RequestParam
+        @NotBlank(message = "keyword must not be blank")
+        @Size(
+                max = 100,
+                message = "keyword must not exceed 100 characters"
+        )
+        String keyword
+) {
+
+    return productService.searchByName(keyword);
+}
+```
+
+驗證規則：
+
+* `keyword` 必須存在。
+* `keyword` 不得為空字串。
+* `keyword` 不得只包含空白。
+* `keyword` 最長為 100 個字元。
+
+最初在 `ProductController` 加入類別層級的：
+
+```java
+@Validated
+```
+
+驗證雖然成功攔截空白字串，但因為 Spring AOP 拋出的：
+
+```text
+ConstraintViolationException
+```
+
+沒有對應的錯誤處理，因此 API 回傳：
+
+```text
+500 Internal Server Error
+```
+
+輸入驗證失敗是 Client 端傳入不合法資料，不應被視為伺服器內部錯誤。
+
+移除 Controller 的 `@Validated` 後，改由 Spring MVC 內建的方法參數驗證處理。
+
+空白輸入會正確回傳：
+
+```text
+400 Bad Request
+```
+
+實際測試結果：
+
+```text
+✅ 正常 keyword 可以成功搜尋
+✅ 空白 keyword 回傳 400 Bad Request
+✅ 超過 100 字元會被 Swagger 驗證攔截
+✅ 驗證失敗不再回傳 500 Internal Server Error
+```
+
+### 8.6 商品刪除 API 安全修正
+
+原本刪除商品使用：
+
+```java
+@GetMapping("/delete/{id}")
+```
+
+實際 API 為：
+
+```http
+GET /api/products/delete/{id}
+```
+
+但 `SecurityConfig` 限制的是 HTTP DELETE：
+
+```java
+.requestMatchers(
+        HttpMethod.DELETE,
+        "/api/products/**"
+).hasRole("ADMIN")
+```
+
+由於 Controller 使用 GET，而 `SecurityConfig` 檢查 DELETE，兩者沒有對上。
+
+一般登入使用者的請求可能落入：
+
+```java
+.anyRequest().authenticated()
+```
+
+造成非 ADMIN 使用者也能刪除商品的權限漏洞。
+
+另外，GET 原則上只應用於查詢資料，不應修改或刪除資料。
+
+修正後改為：
+
+```java
+@DeleteMapping("/{id}")
+```
+
+實際 API 為：
+
+```http
+DELETE /api/products/{id}
+```
+
+修正後 Controller 與 `SecurityConfig` 使用相同的 HTTP Method，只有具備 `ROLE_ADMIN` 的使用者可以刪除商品。
+
+使用測試商品進行驗證：
+
+```text
+商品 ID：145
+商品名稱：Delete Permission Test
+```
+
+一般使用者 `alice` 執行：
+
+```http
+DELETE /api/products/145
+```
+
+結果：
+
+```text
+403 Forbidden
+```
+
+管理員 `admin` 執行相同 API，結果：
+
+```text
+200 OK
+deleted
+```
+
+接著查詢：
+
+```http
+GET /api/audit-logs?action=DELETE&entityId=145
+```
+
+成功取得 DELETE Audit Log：
+
+```json
+{
+  "id": 12,
+  "operator": "admin",
+  "action": "DELETE",
+  "entityType": "PRODUCT",
+  "entityId": 145,
+  "beforeData": "{\"id\":145,\"name\":\"Delete Permission Test\",\"price\":100.00,\"stock\":1,\"version\":0}",
+  "afterData": null
+}
+```
+
+測試結果：
+
+```text
+✅ 原本不安全的 GET 刪除 API 已移除
+✅ DELETE API 正確受到 ADMIN 權限保護
+✅ 一般 USER 無法刪除商品
+✅ ADMIN 可以刪除商品
+✅ 刪除前資料完整寫入 beforeData
+✅ 刪除後資料正確為 null
+✅ DELETE Audit Log 正常產生
+```
+
 ---
 
 ## 9. 系統啟動方式
@@ -834,6 +1009,17 @@ Authorization: Bearer eyJ...
 ]
 ```
 
+### 10.5 商品搜尋與刪除權限測試結果
+
+```text
+✅ 正常商品名稱搜尋回傳 200 OK
+✅ 空白 keyword 回傳 400 Bad Request
+✅ 超過 100 字元的 keyword 被拒絕
+✅ 一般 USER 刪除商品回傳 403 Forbidden
+✅ ADMIN 刪除商品回傳 200 OK
+✅ 商品刪除後成功產生 DELETE Audit Log
+```
+
 ---
 
 ## 11. 後續可改進項目
@@ -848,8 +1034,6 @@ Audit Log 後續可改進：
 
 商品搜尋後續可改進：
 
-* 驗證 `keyword` 不得為 `null` 或空字串。
-* 限制搜尋關鍵字最大長度。
 * 明確定義 `%` 和 `_` 等萬用字元的處理方式。
 * 加入分頁及排序。
 * 為大量商品建立適當索引。
@@ -892,16 +1076,22 @@ Audit Log 管理員權限限制：
 86710b7 fix: restrict audit log access to admin
 ```
 
+Audit Log Response DTO：
+
+```text
+c67f426 refactor: return audit log response DTO
+```
+
 商品名稱 JPQL 參數化查詢：
 
 ```text
 fix: parameterize product name JPQL query
 ```
 
-Audit Log Response DTO：
+商品搜尋輸入驗證與刪除 API 權限修正：
 
 ```text
-refactor: return audit log response DTO
+fix: validate product search and secure delete endpoint
 ```
 
 尚未填入的 Commit ID，可在完成提交後執行：
@@ -931,6 +1121,8 @@ git log --oneline
 * 協助設計與實作 Audit Log。
 * 協助將 JPQL 字串拼接改為參數化查詢。
 * 協助建立 Audit Log Response DTO。
+* 協助加入商品搜尋輸入驗證。
+* 協助發現並修正商品刪除 API 的權限漏洞。
 * 規劃 Swagger 測試流程。
 * 整理 Code Review 與 README。
 
@@ -951,11 +1143,12 @@ AI 是本次專案的重要輔助工具，但程式碼仍由我實際修改、�
 7. 比較 `beforeData` 與 `afterData`。
 8. 確認 Product 樂觀鎖版本正確遞增。
 9. 使用正常關鍵字、大寫關鍵字及特殊輸入測試搜尋。
-10. 檢查 PostgreSQL 欄位型別及資料內容。
-11. 檢查 Swagger Response Schema。
-12. 使用 Git Commit 保存每個階段的修改。
+10. 使用空白與超長關鍵字測試輸入驗證。
+11. 檢查 PostgreSQL 欄位型別及資料內容。
+12. 檢查 Swagger Response Schema。
+13. 使用 Git Commit 保存每個階段的修改。
 
-例如在 Audit Log 權限測試中：
+例如，在 Audit Log 權限測試中：
 
 * ADMIN 查詢回傳 `200 OK`。
 * 一般 USER 查詢回傳 `403 Forbidden`。
@@ -966,6 +1159,12 @@ AI 是本次專案的重要輔助工具，但程式碼仍由我實際修改、�
 * Hibernate 正常查詢 `audit_logs`。
 * Controller 成功回傳 `List<AuditLogResponse>`。
 * Swagger Response Body 正常顯示所有預期欄位。
+
+在商品刪除權限測試中：
+
+* 一般 USER 刪除商品回傳 `403 Forbidden`。
+* ADMIN 刪除商品回傳 `200 OK`。
+* 刪除成功後正確產生 DELETE Audit Log。
 
 這表示修改不只停留在程式碼層面，也通過了實際執行與 API 測試。
 
@@ -981,8 +1180,10 @@ AI 是本次專案的重要輔助工具，但程式碼仍由我實際修改、�
 * 根據 Swagger 回傳結果確認 ADMIN 與 USER 的權限差異。
 * 根據資料庫實際狀況調整 PostgreSQL 欄位。
 * 根據目前專案架構決定 Audit Log 的實作方式。
-* 根據 Entity 的欄位建立 `AuditLogResponse` DTO。
+* 根據 Entity 欄位建立 `AuditLogResponse` DTO。
 * 根據實際測試結果確認 DTO 沒有改變 API 原有欄位。
+* 發現 `@Validated` 造成輸入錯誤回傳 `500` 後，改用 Spring MVC 內建方法參數驗證。
+* 發現 Controller 的 GET 刪除方法沒有符合 SecurityConfig 的 DELETE 權限規則後，改成正確的 `@DeleteMapping`。
 
 我先前曾完成 TopFoodAI 網站專案：
 

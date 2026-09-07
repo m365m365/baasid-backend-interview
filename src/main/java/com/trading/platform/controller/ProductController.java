@@ -3,10 +3,14 @@ package com.trading.platform.controller;
 import com.trading.platform.dto.ProductRequest;
 import com.trading.platform.entity.Product;
 import com.trading.platform.service.ProductService;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.security.core.Authentication;
+
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+
 
 @RestController
 @RequestMapping("/api/products")
@@ -19,8 +23,10 @@ public class ProductController {
     }
 
     @PostMapping
-    public Product create(@RequestBody ProductRequest request,
-                          Authentication authentication) {
+    public Product create(
+            @RequestBody ProductRequest request,
+            Authentication authentication
+    ) {
 
         return productService.createProduct(
                 request,
@@ -29,9 +35,11 @@ public class ProductController {
     }
 
     @PutMapping("/{id}")
-    public Product update(@PathVariable Long id,
-                          @RequestBody ProductRequest request,
-                          Authentication authentication) {
+    public Product update(
+            @PathVariable Long id,
+            @RequestBody ProductRequest request,
+            Authentication authentication
+    ) {
 
         return productService.updateProduct(
                 id,
@@ -40,9 +48,11 @@ public class ProductController {
         );
     }
 
-    @GetMapping("/delete/{id}")
-    public String delete(@PathVariable Long id,
-                         Authentication authentication) {
+    @DeleteMapping("/{id}")
+    public String delete(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
 
         productService.deleteProduct(
                 id,
@@ -63,7 +73,16 @@ public class ProductController {
     }
 
     @GetMapping("/search")
-    public List<Product> search(@RequestParam String keyword) {
+    public List<Product> search(
+            @RequestParam
+            @NotBlank(message = "keyword must not be blank")
+            @Size(
+                    max = 100,
+                    message = "keyword must not exceed 100 characters"
+            )
+            String keyword
+    ) {
+
         return productService.searchByName(keyword);
     }
 }
