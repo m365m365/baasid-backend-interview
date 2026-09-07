@@ -95,6 +95,13 @@ public class SecurityConfig {
                                 "/api/products/**"
                         ).hasRole("ADMIN")
 
+                        // 操作日誌僅限 ADMIN 查詢
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/audit-logs"
+                        ).hasRole("ADMIN")
+
+
                         .anyRequest().authenticated()
                 )
 

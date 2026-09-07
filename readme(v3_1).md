@@ -1,4 +1,4 @@
-# Baasid Backend Interview — README（v3.0）
+# Baasid Backend Interview — README（v3.1）
 
 ## 1. 專案簡介
 
@@ -46,8 +46,9 @@
 22. 使用 `saveAndFlush()` 確保 `afterData` 記錄更新完成後的樂觀鎖版本。
 23. 將商品名稱搜尋的 JPQL 字串拼接改為參數化查詢，降低 JPQL Injection 風險。
 24. 商品名稱搜尋支援模糊比對及英文大小寫不敏感查詢。
-25. 完成 Swagger、JWT、商品搜尋、訂單、庫存、金額及 Audit Log 的實際測試。
-26. 保留相關 Git Commit 紀錄，並將修改 Push 至 GitHub。
+25. 限制只有 `ADMIN` 角色可以查詢 Audit Log，避免一般使用者讀取敏感操作紀錄。
+26. 完成 Swagger、JWT、角色權限、商品搜尋、訂單、庫存、金額及 Audit Log 的實際測試。
+27. 保留相關 Git Commit 紀錄，並將修改 Push 至 GitHub。
 
 ---
 
@@ -146,6 +147,25 @@ Audit Log 查詢 API：
 ```http
 GET /api/audit-logs
 ```
+
+此 API 僅允許 `ADMIN` 角色存取。系統在 `SecurityConfig` 中加入以下授權規則：
+
+```java
+.requestMatchers(
+        HttpMethod.GET,
+        "/api/audit-logs"
+).hasRole("ADMIN")
+```
+
+JWT 驗證成功後，`JwtAuthenticationFilter` 會將 Token 內的角色轉換成 Spring Security 權限：
+
+```java
+new SimpleGrantedAuthority("ROLE_" + role)
+```
+
+例如 Token 內的角色為 `ADMIN` 時，建立的權限為 `ROLE_ADMIN`，可以通過 `hasRole("ADMIN")` 的授權檢查。
+
+一般使用者雖然已登入，但不具備 `ROLE_ADMIN`，因此無法查詢操作日誌。
 
 不帶任何條件時，查詢全部日誌：
 
@@ -246,6 +266,7 @@ created_at
 7. 查詢結果依操作時間倒序排列，方便優先查看最新操作。
 8. 使用獨立快照保存修改前資料，避免 Entity 更新造成歷史資料失真。
 9. 使用 `saveAndFlush()` 確保 Audit Log 保存正確的更新後版本。
+10. 限制只有 `ADMIN` 可以查詢 Audit Log，降低敏感操作紀錄遭一般使用者讀取的風險。
 
 ---
 
@@ -482,6 +503,8 @@ Authorization: Bearer eyJ...
 
 測試或公開分享 Swagger 截圖時，應遮蔽完整 JWT，避免洩漏仍在有效期限內的存取憑證。
 
+測試帳號的密碼也不應出現在公開文件、README 或繳交截圖中。
+
 ### 6.3 Audit Log 測試流程
 
 1. 使用 `POST /api/products` 新增商品。
@@ -493,6 +516,8 @@ Authorization: Bearer eyJ...
 7. 使用不存在的 `entityId`，確認系統正常回傳空陣列。
 8. 連續修改同一商品，確認最新日誌位於回傳陣列最前面。
 9. 確認 `beforeData` 與 `afterData` 的商品版本號正確遞增。
+10. 使用 `ADMIN` 帳號查詢 Audit Log，確認回傳 `200 OK`。
+11. 使用一般 `USER` 帳號查詢 Audit Log，確認回傳 `403 Forbidden`。
 
 單一條件測試：
 
@@ -546,6 +571,9 @@ GET /api/audit-logs?operator=admin&action=CREATE&entityType=PRODUCT&entityId=100
 * 商品樂觀鎖版本由修改前的 `6` 正確增加為修改後的 `7`。
 * 不存在的 `entityId` 會正常回傳空陣列。
 * 多個條件能以 `AND` 正確組合查詢。
+* `ADMIN` 可以成功查詢 Audit Log，回傳 `200 OK`。
+* 一般 `USER` 無權查詢 Audit Log，回傳 `403 Forbidden`。
+* JWT 內的 `ADMIN` 角色能正確轉換為 `ROLE_ADMIN` 權限。
 
 實際測試回傳的 Audit Log 範例：
 
@@ -564,7 +592,54 @@ GET /api/audit-logs?operator=admin&action=CREATE&entityType=PRODUCT&entityId=100
 ]
 ```
 
-### 6.5 商品名稱搜尋測試流程
+### 6.5 Audit Log 權限測試
+
+使用 `ADMIN` 帳號登入並取得新的 JWT，完成 Swagger Authorize 後執行：
+
+```http
+GET /api/audit-logs
+```
+
+實際結果：
+
+```text
+200 OK
+```
+
+系統成功回傳 Audit Log 資料。
+
+接著使用一般使用者 `alice` 登入並取得新的 JWT，重新完成 Swagger Authorize 後執行：
+
+```http
+GET /api/audit-logs
+```
+
+實際結果：
+
+```text
+403 Forbidden
+```
+
+回傳內容：
+
+```json
+{
+  "status": 403,
+  "error": "Forbidden",
+  "path": "/api/audit-logs"
+}
+```
+
+測試結果表示：
+
+```text
+✅ ADMIN 可以查詢 Audit Log
+✅ 一般 USER 無法查詢 Audit Log
+✅ JWT 角色資料能正確建立 Spring Security Authority
+✅ SecurityConfig 的 hasRole("ADMIN") 規則正常生效
+```
+
+### 6.6 商品名稱搜尋測試流程
 
 首先建立以下兩筆測試商品。
 
@@ -622,7 +697,7 @@ GET /api/products/search?keyword=phone
 
 API 成功回傳：
 
-```http
+```text
 200 OK
 ```
 
@@ -643,7 +718,7 @@ GET /api/products/search?keyword=PHONE
 
 API 同樣成功回傳：
 
-```http
+```text
 200 OK
 ```
 
@@ -662,7 +737,7 @@ LOWER(p.name) LIKE LOWER(:keyword)
 
 可以讓英文商品名稱搜尋不區分大小寫。
 
-### 6.6 JPQL 特殊輸入測試
+### 6.7 JPQL 特殊輸入測試
 
 使用以下特殊內容作為搜尋關鍵字：
 
@@ -678,7 +753,7 @@ GET /api/products/search?keyword=' OR '1'='1
 
 API 正常回傳：
 
-```http
+```text
 200 OK
 ```
 
@@ -710,11 +785,10 @@ API 正常回傳：
 
 ## 7. 後續可改進項目
 
-目前 Audit Log 已完成基本記錄、動態條件查詢、Entity ID 查詢及時間倒序排列，後續可以繼續加入：
+目前 Audit Log 已完成基本記錄、動態條件查詢、Entity ID 查詢、時間倒序排列及管理員權限限制，後續可以繼續加入：
 
 * 依日期區間查詢。
 * 查詢結果分頁。
-* 限制只有 `ADMIN` 可以查詢 Audit Log。
 * 使用 Audit Log Response DTO，避免直接回傳 Entity。
 * 自動遮蔽密碼、JWT 及資料庫憑證等敏感資訊。
 * 為 Audit Log 查詢功能增加自動化測試。
@@ -764,22 +838,87 @@ Audit Log `entityId` 查詢相關 Commit：
 fix: parameterize product name JPQL query
 ```
 
-## 9. 第四部分：AI 使用說明:
-## - A.這份作業你哪些部分借助了 AI？（讀程式碼、找 bug、寫修正、寫測試……）
-## 回答:
-## 95%借助了AI,它無疑是最大的幫手.
+Audit Log 管理員權限限制相關 Commit：
 
-## -B. **你如何驗證 AI 的產出？** 例如：AI 有沒有「自信地改錯」、有沒有引入新的 bug、你怎麼發現的？
+```text
+fix: restrict audit log access to admin
+```
 
-## 回答:注意AI的想法是什麼,檢查結果是否合理,基本上現今的AI很少錯,比一年前的能力差別很大,大部分應該都可以信任.
+上述最後兩筆 Commit 可以在完成提交後，使用下列命令取得實際 Commit ID：
 
-## 有位理科教授說,科學理念是:
-## 1.這件事是真的嗎?(驗證謠傳).
-## 2.這件事是真的嗎?(驗證事實證據).
-## 3.這件事是真的嗎?(絕對要再次懷疑,無真理永遠持久).
-## 基本上都會小心求證
+```bash
+git log --oneline -2
+```
 
-## - C.有沒有哪次你**否決**了 AI 的建議？為什麼？
-## 回答:
-## 沒有否決AI 的建議,因為之前有做過網站"https://www.topfoodai.com/"
-## 有些經驗,這些小錯,大多是基本的設計原則,AI處理得很好.我製作的過程中,會遇到相同的疑問.
+再將實際 Commit ID 補到 Commit 訊息前方。
+
+---
+
+## 9. 第四部分：AI 使用說明
+
+### A. 這份作業有哪些部分借助了 AI？
+
+本次作業在程式碼閱讀、問題分析、Bug 排查、修正建議、測試流程及文件整理等部分使用了 AI 協助。
+
+主要包含：
+
+* 閱讀及整理原始專案結構。
+* 找出編譯錯誤及啟動失敗原因。
+* 分析 Spring Security 與 JWT 設定。
+* 檢查 Entity、Repository、DTO 與 Service 之間的不一致。
+* 分析 Transaction、自我呼叫及庫存扣減問題。
+* 建議使用 BCrypt、環境變數、BigDecimal 及樂觀鎖。
+* 協助設計與實作 Audit Log。
+* 協助將 JPQL 字串拼接改成參數化查詢。
+* 規劃 Swagger 測試流程。
+* 整理 Code Review 與 README 文件。
+
+AI 是本次專案的重要輔助工具，但程式碼仍由我實際修改、執行及測試。
+
+### B. 如何驗證 AI 的產出？
+
+我不會只根據 AI 的文字說明判斷修改是否正確，而是透過實際執行結果進行驗證。
+
+驗證方式包括：
+
+1. 重新編譯及啟動 Spring Boot 專案。
+2. 觀察 Console 是否出現編譯錯誤、Bean 注入錯誤或資料庫錯誤。
+3. 使用 Swagger 實際登入並取得 JWT。
+4. 使用不同角色的帳號測試 API 權限。
+5. 實際新增、修改及刪除商品，確認 Audit Log 正確產生。
+6. 比較 `beforeData` 與 `afterData`，確認資料快照及版本號正確。
+7. 使用正常關鍵字、大寫關鍵字及特殊輸入測試商品搜尋。
+8. 檢查 PostgreSQL 欄位型別及資料內容。
+9. 透過 Git Commit 保存每個階段的修改，方便追蹤及回復。
+
+例如，在 Audit Log 權限測試中：
+
+* `ADMIN` 查詢回傳 `200 OK`。
+* 一般 `USER` 查詢回傳 `403 Forbidden`。
+
+這表示 JWT 角色與 Spring Security 授權規則確實正常運作。
+
+科學方法強調反覆驗證與懷疑，因此即使 AI 提供的建議看起來合理，我仍會透過程式啟動、API 測試、資料庫結果及 Git 差異再次確認。
+
+### C. 有沒有否決或調整 AI 的建議？
+
+本次作業沒有完全否決 AI 提出的主要修正方向，但我並非直接接受所有內容，而是依照專案的實際狀況逐項確認及調整。
+
+例如：
+
+* 根據實際 Entity 欄位調整 Repository 方法。
+* 根據目前 JWT 中的角色格式確認是否需要加入 `ROLE_` 前綴。
+* 根據實際 API 路徑設定 Spring Security 規則。
+* 根據 Swagger 回傳結果確認 ADMIN 與一般 USER 的權限差異。
+* 根據資料庫實際版本調整 PostgreSQL 欄位。
+* 根據目前專案架構選擇適合的 Audit Log 實作方式。
+
+我先前曾完成 TopFoodAI 網站專案：
+
+```text
+https://www.topfoodai.com/
+```
+
+因此對 Spring Boot、資料庫、AWS 部署及 API 測試已有實作經驗。這些經驗也幫助我判斷 AI 建議是否符合基本設計原則。
+
+最終仍以實際執行結果、測試結果及程式碼差異作為判斷依據，而不是將 AI 的回答直接視為一定正確。
